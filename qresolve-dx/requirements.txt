@@ -1,0 +1,30 @@
+# QResolve-Dx Dependencies
+# Core
+numpy>=1.26,<2.0
+pandas>=2.1,<3.0
+scipy>=1.12,<2.0
+
+# HPO Ontology
+pyhpo>=3.2
+
+# Classical ML
+xgboost>=2.0,<3.0
+scikit-learn>=1.4,<2.0
+shap>=0.45,<1.0
+
+# Quantum (Qiskit 1.x ecosystem)
+qiskit>=1.0,<2.0
+qiskit-machine-learning>=0.7,<1.0
+qiskit-algorithms>=0.3,<1.0
+qiskit-aer>=0.14,<1.0
+
+# Statistics
+statsmodels>=0.14,<1.0
+
+# Backend
+fastapi>=0.110,<1.0
+uvicorn>=0.27,<1.0
+
+# NLP (optional — for free-text symptom extraction)
+# spacy>=3.7,<4.0
+# scispacy (install separately via wheel)

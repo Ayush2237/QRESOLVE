@@ -1,0 +1,141 @@
+{
+  "generated": "2026-09-13T23:22:14.334209",
+  "classical_cv": {
+    "n_splits": 5,
+    "folds": [
+      {
+        "fold": 1,
+        "accuracy": 1.0,
+        "macro_f1": 1.0,
+        "log_loss": 0.01656632497906685,
+        "n_train": 800,
+        "n_val": 200
+      },
+      {
+        "fold": 2,
+        "accuracy": 0.995,
+        "macro_f1": 0.9949992186279106,
+        "log_loss": 0.03440329059958458,
+        "n_train": 800,
+        "n_val": 200
+      },
+      {
+        "fold": 3,
+        "accuracy": 0.995,
+        "macro_f1": 0.9949992186279106,
+        "log_loss": 0.030003497377038002,
+        "n_train": 800,
+        "n_val": 200
+      },
+      {
+        "fold": 4,
+        "accuracy": 1.0,
+        "macro_f1": 1.0,
+        "log_loss": 0.027192607522010803,
+        "n_train": 800,
+        "n_val": 200
+      },
+      {
+        "fold": 5,
+        "accuracy": 0.995,
+        "macro_f1": 0.9949992186279106,
+        "log_loss": 0.035191938281059265,
+        "n_train": 800,
+        "n_val": 200
+      }
+    ],
+    "overall_accuracy": 0.997,
+    "overall_macro_f1": 0.9969998312405073,
+    "overall_log_loss": 0.02867153104061926,
+    "confusion_matrix": [
+      [
+        197,
+        0,
+        0,
+        0,
+        3
+      ],
+      [
+        0,
+        200,
+        0,
+        0,
+        0
+      ],
+      [
+        0,
+        0,
+        200,
+        0,
+        0
+      ],
+      [
+        0,
+        0,
+        0,
+        200,
+        0
+      ],
+      [
+        0,
+        0,
+        0,
+        0,
+        200
+      ]
+    ]
+  },
+  "calibration": {
+    "method": "isotonic",
+    "cv_folds": 5,
+    "calibrated_log_loss": 0.0004397100891340871,
+    "uncalibrated_log_loss": 0.015330398455262184,
+    "per_class": {
+      "Marfan syndrome": {
+        "brier_uncalibrated": 0.0005283751524984837,
+        "brier_calibrated": 7.106323953604782e-06
+      },
+      "Loeys-Dietz syndrome": {
+        "brier_uncalibrated": 0.00014761817874386907,
+        "brier_calibrated": 8.743664376324484e-06
+      },
+      "Beals syndrome": {
+        "brier_uncalibrated": 0.00010142790415557101,
+        "brier_calibrated": 1.0088455632272585e-05
+      },
+      "Shprintzen-Goldberg syndrome": {
+        "brier_uncalibrated": 0.00014074200589675456,
+        "brier_calibrated": 1.0567713690434881e-05
+      },
+      "MASS phenotype": {
+        "brier_uncalibrated": 0.0005289966939017177,
+        "brier_calibrated": 1.3885775878460933e-05
+      }
+    }
+  },
+  "confusion_detection": {
+    "n_total": 1000,
+    "n_hard": 214,
+    "n_easy": 786,
+    "hard_rate": 0.214,
+    "margin_tau": 0.03,
+    "entropy_tau": 0.8,
+    "trigger_breakdown": {
+      "known_pair": 214,
+      "none": 786
+    },
+    "top_confusion_pairs": {
+      "Marfan syndrome \u2194 MASS phenotype": 198,
+      "Shprintzen-Goldberg syndrome \u2194 Beals syndrome": 7,
+      "Shprintzen-Goldberg syndrome \u2194 Loeys-Dietz syndrome": 3,
+      "Loeys-Dietz syndrome \u2194 Shprintzen-Goldberg syndrome": 2,
+      "Marfan syndrome \u2194 Loeys-Dietz syndrome": 1,
+      "Loeys-Dietz syndrome \u2194 Marfan syndrome": 1,
+      "Beals syndrome \u2194 Marfan syndrome": 1,
+      "MASS phenotype \u2194 Marfan syndrome": 1
+    },
+    "hard_case_accuracy": 1.0,
+    "easy_case_accuracy": 1.0
+  },
+  "quantum_benchmark": null
+}
