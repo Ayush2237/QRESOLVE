@@ -27,9 +27,8 @@ The core backend and ML models are fully implemented. The architecture is a **tw
 
 ---
 
-## 🚀 Where We Need Help (To-Do / Roadmap)
+## (To-Do / Roadmap)
 
-If you're looking to contribute, pick one of these areas:
 
 ### 1. Frontend UI (High Priority)
 The backend is done, but we need a clinical dashboard.
