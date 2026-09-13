@@ -84,8 +84,3 @@ python main.py
 * `POST /diagnose`: Submit patient symptoms (HPO terms or text) and receive ranked differential diagnoses. Automatically routes to the quantum resolver if the case is flagged as "hard".
 * `GET /explain/{case_id}`: Retrieve SHAP evidence and Information-Gain-based next-test recommendations for a specific diagnosis.
 * `GET /benchmark/report`: Fetch the latest statistical benchmark comparing the Quantum vs. Classical models.
-
----
-
-## 🔬 Hackathon Context (SIH 2026)
-Built as a submission for the Smart India Hackathon. See `info.md` for extended project context, future roadmaps, and hackathon specifics.
