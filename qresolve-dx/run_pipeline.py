@@ -311,7 +311,7 @@ def phase4_quantum_resolver(X_hard, y_hard):
         for idx in selected_idx:
             if idx < len(ALL_HPO_TERMS):
                 term = ALL_HPO_TERMS[idx]
-                print(f"    Qubit {selected_idx.tolist().index(idx)}: {term} ({HPO_TERMS.get(term, '?')})")
+                print(f"    Qubit {selected_idx.index(idx)}: {term} ({HPO_TERMS.get(term, '?')})")
 
         # Normalize for quantum
         X_norm = normalize_for_quantum(X_reduced)
