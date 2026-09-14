@@ -6,6 +6,18 @@ This document outlines the current state of the repository, how the architecture
 
 ---
 
+## 🚀 Recent Major Updates (The Robustness Overhaul)
+
+The backend just underwent a massive robustness and mathematical rigor overhaul:
+- **Quantum Simulation Fixed**: Migrated from deprecated Qiskit APIs to modern Qiskit 2.x `StatevectorSampler`. The QSVM phase now executes flawlessly end-to-end and validates Mercer's kernel conditions.
+- **Mathematical Rigor Upgraded**: 
+  - **Information Theory**: Replaced heuristic similarity scoring with proper Most Informative Common Ancestor (MICA) Information Content logic.
+  - **Bayesian Recommender**: Fixed the Next-Test recommender to rigorously compare posterior vs. prior probabilities, accurately suggesting which disease gains probability mass given test results.
+- **Explainability**: SHAP explainer now correctly extracts base XGBoost estimators from calibration wrappers to prevent crashes.
+- **Common Diseases**: Normalized data pipelines for Breast Cancer and Parkinson's models to ensure flawless execution and proper metric tracking.
+
+---
+
 ## 🗺️ Codebase Map & What's Built
 
 The core backend and ML models are fully implemented. The architecture is a **two-tier system**:
