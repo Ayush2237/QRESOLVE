@@ -1,6 +1,6 @@
 # QResolve-Dx Benchmark Report
 
-**Generated:** 2026-09-13 23:44:13
+**Generated:** 2026-09-14 12:18:37
 **Diseases:** Marfan syndrome, Loeys-Dietz syndrome, Beals syndrome, Shprintzen-Goldberg syndrome, MASS phenotype
 
 ## ⚠️ Data Disclosure
@@ -81,9 +81,29 @@
 | Loeys-Dietz syndrome ↔ Shprintzen-Goldberg syndrome | 2 |
 | Marfan syndrome ↔ Loeys-Dietz syndrome | 1 |
 
-## 4. Quantum Resolver
+## 4. Quantum Kernel SVM vs Classical RBF-SVM
 
-Quantum pipeline was not run. Classical results only.
+> This comparison is on the **hard-case subset only** — the cases
+> where the classical XGBoost triage model was uncertain.
+
+- **Hard-case test set size:** n = 0
+
+| Metric | Quantum QSVM | Classical RBF-SVM |
+|--------|-------------|-------------------|
+| Accuracy | 0.9524 | 0.9762 |
+| Macro-F1 | 0.5915 | 0.0000 |
+
+### Statistical Significance (McNemar's Test)
+
+- **McNemar's p-value:** 1.0000
+- **Significance level:** α = 0.05
+- **Conclusion:** No significant difference
+
+> **Note on small sample sizes:** Given the likely small n of hard
+> cases (n = 0), any accuracy delta must be interpreted with
+> caution. McNemar's test is appropriate for paired comparisons on
+> small samples, but statistical power is limited. An unqualified
+> 'quantum won by X%' claim without this context would be misleading.
 
 ## 5. Summary
 
@@ -92,7 +112,19 @@ Quantum pipeline was not run. Classical results only.
 | Classical XGBoost | ✓ | F1 = 0.9970 |
 | Calibration | ✓ | ΔLogLoss = +0.0149 |
 | Confusion Detection | ✓ | 21.4% hard |
-| Quantum QSVM | ✗ | Not run |
+| Quantum QSVM | ✓ | F1 = 0.5915 |
+| McNemar's Test | ✓ | p = 1.0 |
 
 ## 6. Common Disease Classifiers (Real Data)
+
+### Breast Cancer (Wisconsin Dataset — 569 real patients)
+- **Accuracy:** 0.9508
+- **Macro-F1:** 0.9613
+- **AUC-ROC:** 0.9920
+- **Data:** REAL (sklearn.datasets.load_breast_cancer)
+
+### Parkinson's Disease (Voice Measurements)
+- **Accuracy:** 0.9385
+- **Macro-F1:** 0.9602
+- **AUC-ROC:** 0.9744
 

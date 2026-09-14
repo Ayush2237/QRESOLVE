@@ -109,28 +109,27 @@ def load_parkinsons_data() -> Tuple[np.ndarray, np.ndarray, List[str]]:
         return X, y, PARKINSONS_FEATURE_NAMES
 
 def train_parkinsons_model(X: np.ndarray, y: np.ndarray, n_splits: int = 5) -> Tuple[Any, Dict[str, Any]]:
-    """Trains an XGBoost model with stratified 5-fold CV and calibrated probabilities."""
+    """
+    Trains an XGBoost model with stratified 5-fold CV and calibrated probabilities.
+    
+    Returns:
+        Tuple of (trained_model, cv_results_dict).
+        cv_results keys: accuracy, f1, auc_roc (flat floats = mean across folds)
+    """
     skf = StratifiedKFold(n_splits=n_splits, shuffle=True, random_state=42)
     
-    metrics = {
-        'accuracy': [],
-        'precision': [],
-        'recall': [],
-        'f1': [],
-        'roc_auc': []
-    }
+    fold_accuracies = []
+    fold_f1s = []
+    fold_aucs = []
     
     base_model = xgb.XGBClassifier(
         objective='binary:logistic',
         eval_metric='logloss',
-        use_label_encoder=False,
         random_state=42,
         n_estimators=100,
         max_depth=3,
         learning_rate=0.1
     )
-    
-    calibrated_model = CalibratedClassifierCV(estimator=base_model, method='sigmoid', cv=skf)
     
     for train_idx, test_idx in skf.split(X, y):
         X_train, X_test = X[train_idx], X[test_idx]
@@ -140,7 +139,6 @@ def train_parkinsons_model(X: np.ndarray, y: np.ndarray, n_splits: int = 5) -> T
         fold_model = xgb.XGBClassifier(
             objective='binary:logistic',
             eval_metric='logloss',
-            use_label_encoder=False,
             random_state=42,
             n_estimators=100,
             max_depth=3,
@@ -151,24 +149,18 @@ def train_parkinsons_model(X: np.ndarray, y: np.ndarray, n_splits: int = 5) -> T
         y_pred = fold_model.predict(X_test)
         y_prob = fold_model.predict_proba(X_test)[:, 1]
         
-        metrics['accuracy'].append(accuracy_score(y_test, y_pred))
-        metrics['precision'].append(precision_score(y_test, y_pred))
-        metrics['recall'].append(recall_score(y_test, y_pred))
-        metrics['f1'].append(f1_score(y_test, y_pred))
-        metrics['roc_auc'].append(roc_auc_score(y_test, y_prob))
+        fold_accuracies.append(float(accuracy_score(y_test, y_pred)))
+        fold_f1s.append(float(f1_score(y_test, y_pred)))
+        fold_aucs.append(float(roc_auc_score(y_test, y_prob)))
         
-    # Final model trained on all data
+    # Final calibrated model trained on all data
+    calibrated_model = CalibratedClassifierCV(estimator=base_model, method='sigmoid', cv=3)
     calibrated_model.fit(X, y)
-    
-    # Calculate means
-    cv_results = {k: float(np.mean(v)) for k, v in metrics.items()}
-    cv_results['n_samples'] = len(X)
     
     # Extract feature importance from base model trained on all data
     final_base = xgb.XGBClassifier(
         objective='binary:logistic',
         eval_metric='logloss',
-        use_label_encoder=False,
         random_state=42,
         n_estimators=100,
         max_depth=3,
@@ -176,7 +168,18 @@ def train_parkinsons_model(X: np.ndarray, y: np.ndarray, n_splits: int = 5) -> T
     )
     final_base.fit(X, y)
     importance = dict(zip(PARKINSONS_FEATURE_NAMES, final_base.feature_importances_.tolist()))
-    cv_results['feature_importance'] = dict(sorted(importance.items(), key=lambda x: x[1], reverse=True))
+    
+    # Flat cv_results schema — consistent with breast_cancer and pipeline expectations
+    cv_results = {
+        'accuracy': float(np.mean(fold_accuracies)),
+        'f1': float(np.mean(fold_f1s)),
+        'auc_roc': float(np.mean(fold_aucs)),
+        'per_fold_accuracy': fold_accuracies,
+        'per_fold_f1': fold_f1s,
+        'per_fold_auc': fold_aucs,
+        'n_samples': len(X),
+        'feature_importance': dict(sorted(importance.items(), key=lambda x: x[1], reverse=True))
+    }
     
     return calibrated_model, cv_results
 

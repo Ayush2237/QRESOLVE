@@ -48,6 +48,7 @@ def train_breast_cancer_model(X: np.ndarray, y: np.ndarray, n_splits: int = 5) -
         
     Returns:
         Tuple of (trained_model, cv_results_dict).
+        cv_results keys: accuracy, f1, auc_roc (flat floats = mean across folds)
     """
     skf = StratifiedKFold(n_splits=n_splits, shuffle=True, random_state=42)
     
@@ -58,7 +59,6 @@ def train_breast_cancer_model(X: np.ndarray, y: np.ndarray, n_splits: int = 5) -
         learning_rate=0.1,
         objective='binary:logistic', 
         eval_metric='logloss',
-        use_label_encoder=False, 
         random_state=42
     )
     
@@ -70,11 +70,11 @@ def train_breast_cancer_model(X: np.ndarray, y: np.ndarray, n_splits: int = 5) -
     base_xgb.fit(X, y)
     importances = base_xgb.feature_importances_
     
-    for train_index, test_index in skf.split(X, y):
+    for fold_i, (train_index, test_index) in enumerate(skf.split(X, y), 1):
         X_train, X_test = X[train_index], X[test_index]
         y_train, y_test = y[train_index], y[test_index]
         
-        # Train fold model (we use cv=2 for internal calibration to save time on small dataset)
+        # Train fold model
         fold_model = CalibratedClassifierCV(base_xgb, method='sigmoid', cv=2)
         fold_model.fit(X_train, y_train)
         
@@ -82,9 +82,13 @@ def train_breast_cancer_model(X: np.ndarray, y: np.ndarray, n_splits: int = 5) -
         y_pred = fold_model.predict(X_test)
         y_prob = fold_model.predict_proba(X_test)[:, 1]
         
-        fold_accuracies.append(accuracy_score(y_test, y_pred))
-        fold_f1s.append(f1_score(y_test, y_pred))
-        fold_aucs.append(roc_auc_score(y_test, y_prob))
+        acc = accuracy_score(y_test, y_pred)
+        f1 = f1_score(y_test, y_pred)
+        auc = roc_auc_score(y_test, y_prob)
+        
+        fold_accuracies.append(acc)
+        fold_f1s.append(f1)
+        fold_aucs.append(auc)
         
     # Fit final calibrated model on all data
     final_calibrated_model = CalibratedClassifierCV(base_xgb, method='sigmoid', cv=5)
@@ -100,17 +104,16 @@ def train_breast_cancer_model(X: np.ndarray, y: np.ndarray, n_splits: int = 5) -
     importance_dict = {feat: float(imp) for feat, imp in zip(feature_names, importances)}
     top_10_features = sorted(importance_dict.items(), key=lambda x: x[1], reverse=True)[:10]
     
+    # Flat cv_results schema — consistent with parkinsons and pipeline expectations
     cv_results = {
-        'per_fold': {
-            'accuracy': fold_accuracies,
-            'f1': fold_f1s,
-            'auc_roc': fold_aucs
-        },
-        'overall': {
-            'accuracy': np.mean(fold_accuracies),
-            'f1': np.mean(fold_f1s),
-            'auc_roc': np.mean(fold_aucs)
-        },
+        'accuracy': float(np.mean(fold_accuracies)),
+        'f1': float(np.mean(fold_f1s)),
+        'auc_roc': float(np.mean(fold_aucs)),
+        'per_fold_accuracy': fold_accuracies,
+        'per_fold_f1': fold_f1s,
+        'per_fold_auc': fold_aucs,
+        'n_samples': int(X.shape[0]),
+        'n_features': int(X.shape[1]),
         'confusion_matrix': conf_mat.tolist(),
         'top_10_features': top_10_features
     }

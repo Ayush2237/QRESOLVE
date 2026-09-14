@@ -78,6 +78,12 @@ def compute_information_gain(prior_probs: np.ndarray, disease_names: List[str], 
 def recommend_next_test(current_probs: np.ndarray, disease_names: List[str], observed_terms: List[str], top_k: int = 5) -> List[Dict[str, Any]]:
     """
     Recommend the next clinical tests based on Information Gain.
+    
+    For each untested HPO term, compute:
+      IG(term) = H(prior) - E[H(posterior)]
+    
+    Then report which disease's probability *increases most* upon
+    positive vs negative test results (posterior - prior comparison).
     """
     recommendations = []
     
@@ -92,16 +98,23 @@ def recommend_next_test(current_probs: np.ndarray, disease_names: List[str], obs
         post_1 = compute_posterior(current_probs, disease_names, term, True)
         post_0 = compute_posterior(current_probs, disease_names, term, False)
         
-        top_disease_1 = disease_names[np.argmax(post_1)]
-        top_disease_0 = disease_names[np.argmax(post_0)]
+        # Find which disease GAINED the most probability mass (not just argmax)
+        # This is the key fix: compare posterior to prior
+        gain_if_positive = post_1 - current_probs
+        gain_if_negative = post_0 - current_probs
+        
+        # Disease that benefits most from a positive test result
+        beneficiary_pos = disease_names[np.argmax(gain_if_positive)]
+        # Disease that benefits most from a negative test result
+        beneficiary_neg = disease_names[np.argmax(gain_if_negative)]
         
         recommendations.append({
             'hpo_id': term,
             'label': HPO_TERMS.get(term, term),
             'information_gain': ig,
             'clinical_test': HPO_TO_CLINICAL_TEST.get(term, "Clinical Evaluation"),
-            'expected_outcome_positive': top_disease_1,
-            'expected_outcome_negative': top_disease_0
+            'expected_outcome_positive': beneficiary_pos,
+            'expected_outcome_negative': beneficiary_neg
         })
         
     recommendations.sort(key=lambda x: x['information_gain'], reverse=True)

@@ -147,10 +147,23 @@ def try_compute_ic_with_pyhpo() -> Optional[Dict[str, float]]:
 
 def compute_lin_similarity(t1: str, t2: str, ic_values: Dict[str, float]) -> float:
     """
-    Simplified Lin's similarity without full ontology:
-    sim(t1, t2) = 2 * IC(MICA(t1,t2)) / (IC(t1) + IC(t2))
-    Without full DAG, approximate MICA by checking if terms share a common ancestor 
-    from a hardcoded parent mapping of the HPO terms in our cluster.
+    Lin's semantic similarity between two HPO terms.
+    
+    Formula:  sim_Lin(t1, t2) = 2 · IC(MICA) / (IC(t1) + IC(t2))
+    
+    Where MICA = Most Informative Common Ancestor.
+    
+    Without a full HPO DAG, we approximate MICA using the HPO_PARENT_MAP:
+    if two terms share the same parent category, the MICA is that parent.
+    The IC of the parent is looked up from ic_values (computed over our disease corpus).
+    If the parent is not in ic_values, we use IC = 0 (root-level, maximally general).
+    
+    Properties:
+    - sim(t, t) = 1.0  (identity)
+    - sim(t1, t2) ∈ [0, 1]  (bounded)
+    - sim(t1, t2) = 0 if no common ancestor  (unrelated terms)
+    
+    Reference: Lin D. (1998) "An Information-Theoretic Definition of Similarity"
     """
     if t1 == t2:
         return 1.0
@@ -165,10 +178,19 @@ def compute_lin_similarity(t1: str, t2: str, ic_values: Dict[str, float]) -> flo
     parent2 = HPO_PARENT_MAP.get(t2)
     
     if parent1 and parent2 and parent1 == parent2:
-        # Approximate MICA IC as roughly half the minimum IC of the two terms
-        # This reflects that the parent is more general than both terms
-        mica_ic = 0.5 * min(ic_t1, ic_t2)
-        return 2 * mica_ic / (ic_t1 + ic_t2)
+        # MICA is the shared parent — look up its actual IC
+        # If the parent itself is in our corpus, use its IC; otherwise it's
+        # a very general category (e.g., "Abnormality of the eye") with IC ≈ 0
+        mica_ic = ic_values.get(parent1, 0.0)
+        
+        # Ensure MICA IC doesn't exceed either child's IC
+        # (a parent is always more general than its children)
+        mica_ic = min(mica_ic, ic_t1, ic_t2)
+        
+        if mica_ic <= 0:
+            return 0.0
+            
+        return 2.0 * mica_ic / (ic_t1 + ic_t2)
         
     return 0.0
 

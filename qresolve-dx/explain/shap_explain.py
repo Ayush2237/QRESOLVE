@@ -15,18 +15,38 @@ try:
 except ImportError:
     SHAP_AVAILABLE = False
 
+def _extract_base_model(model):
+    """
+    Extract the base tree model from a CalibratedClassifierCV wrapper.
+    SHAP's TreeExplainer needs the raw XGBoost/RF model, not the calibrated wrapper.
+    """
+    # CalibratedClassifierCV wraps the estimator
+    if hasattr(model, 'estimator'):
+        return model.estimator
+    # Already fitted CalibratedClassifierCV stores calibrated classifiers
+    if hasattr(model, 'calibrated_classifiers_'):
+        # Each calibrated classifier has a .estimator attribute
+        inner = model.calibrated_classifiers_[0]
+        if hasattr(inner, 'estimator'):
+            return inner.estimator
+    return model
+
+
 def explain_prediction(model, X_patient, top2_diseases, feature_names=ALL_HPO_TERMS):
     """
     Explain the prediction using SHAP values.
     
+    Extracts the base tree model from CalibratedClassifierCV if needed,
+    since SHAP's TreeExplainer cannot handle calibration wrappers.
+    
     Args:
-        model: Trained classical model (e.g., XGBoost, RandomForest)
+        model: Trained model (may be CalibratedClassifierCV wrapping XGBoost)
         X_patient: Patient feature vector (shape: 1 x NUM_FEATURES)
         top2_diseases: Tuple/list of (top_disease, runner_up_disease)
         feature_names: List of feature names
         
     Returns:
-        dict: Explanation dict
+        dict: Explanation dict with supporting and against evidence
     """
     top_disease, runner_up = top2_diseases
     
@@ -40,9 +60,12 @@ def explain_prediction(model, X_patient, top2_diseases, feature_names=ALL_HPO_TE
         'against_evidence': []
     }
     
+    # Extract base model for SHAP (TreeExplainer needs raw XGBoost, not calibrated wrapper)
+    base_model = _extract_base_model(model)
+    
     if SHAP_AVAILABLE:
         try:
-            explainer = shap.TreeExplainer(model)
+            explainer = shap.TreeExplainer(base_model)
             shap_values = explainer.shap_values(X_patient)
             
             if isinstance(shap_values, list):
@@ -80,9 +103,9 @@ def explain_prediction(model, X_patient, top2_diseases, feature_names=ALL_HPO_TE
                     
         except Exception as e:
             print(f"SHAP explanation failed: {e}")
-            return _fallback_explanation(model, top_disease, runner_up, feature_names)
+            return _fallback_explanation(base_model, top_disease, runner_up, feature_names)
     else:
-        return _fallback_explanation(model, top_disease, runner_up, feature_names)
+        return _fallback_explanation(base_model, top_disease, runner_up, feature_names)
         
     return result
 

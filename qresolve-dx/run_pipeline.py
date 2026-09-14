@@ -84,9 +84,9 @@ def run_breast_cancer_pipeline():
         model, cv_results = train_breast_cancer_model(X, y)
 
         print(f"\n  ╔══ Results (Real Data) ══╗")
-        print(f"  ║ Accuracy: {cv_results['overall_accuracy']:.4f}       ║")
-        print(f"  ║ Macro-F1: {cv_results['overall_f1']:.4f}       ║")
-        print(f"  ║ AUC-ROC:  {cv_results.get('overall_auc', 'N/A')}       ║")
+        print(f"  ║ Accuracy: {cv_results['accuracy']:.4f}       ║")
+        print(f"  ║ Macro-F1: {cv_results['f1']:.4f}       ║")
+        print(f"  ║ AUC-ROC:  {cv_results['auc_roc']:.4f}       ║")
         print(f"  ╚═════════════════════════╝")
 
         # Save model
@@ -131,8 +131,9 @@ def run_parkinsons_pipeline():
         model, cv_results = train_parkinsons_model(X, y)
 
         print(f"\n  ╔══ Results ══════════════╗")
-        print(f"  ║ Accuracy: {cv_results['overall_accuracy']:.4f}       ║")
-        print(f"  ║ Macro-F1: {cv_results['overall_f1']:.4f}       ║")
+        print(f"  ║ Accuracy: {cv_results['accuracy']:.4f}       ║")
+        print(f"  ║ Macro-F1: {cv_results['f1']:.4f}       ║")
+        print(f"  ║ AUC-ROC:  {cv_results['auc_roc']:.4f}       ║")
         print(f"  ╚═════════════════════════╝")
 
         # Save model
@@ -288,58 +289,84 @@ def phase4_quantum_resolver(X_hard, y_hard):
 
     try:
         from models.quantum.feature_select import select_discriminative_features, normalize_for_quantum
-        from models.quantum.zz_kernel import create_quantum_kernel, compute_kernel_matrices
+        from models.quantum.zz_kernel import create_quantum_kernel, compute_kernel_matrices, validate_kernel_matrix
         from models.quantum.train_qsvm import train_quantum_svm, evaluate_qsvm
         from models.quantum.benchmark_classical_svm import benchmark_quantum_vs_classical
         from sklearn.model_selection import train_test_split
 
-        unique_labels = np.unique(y_hard)
+        unique_labels, label_counts = np.unique(y_hard, return_counts=True)
         print(f"  Labels in hard cases: {[LABEL_DISEASE_MAP[l] for l in unique_labels]}")
+        for lbl, cnt in zip(unique_labels, label_counts):
+            print(f"    {LABEL_DISEASE_MAP[lbl]}: {cnt} cases")
 
         if len(unique_labels) < 2:
             print(f"  Only one class — cannot train.")
             return None
 
+        # Filter out classes with too few members for stratified split
+        # Need at least 2 members per class for train_test_split(stratify=...)
+        valid_mask = np.isin(y_hard, unique_labels[label_counts >= 2])
+        if np.sum(valid_mask) < 10:
+            print(f"  After filtering rare classes, only {np.sum(valid_mask)} cases remain — too few.")
+            return None
+        X_hard_filtered = X_hard[valid_mask]
+        y_hard_filtered = y_hard[valid_mask]
+
+        filtered_labels = np.unique(y_hard_filtered)
+        if len(filtered_labels) < 2:
+            print(f"  Only one class after filtering — cannot train.")
+            return None
+
         # Feature selection
         print("\n--- Mutual Information Feature Selection ---")
         X_reduced, y_filtered, selected_idx = select_discriminative_features(
-            X_hard, y_hard, top2_labels=unique_labels.tolist(),
-            k=min(8, X_hard.shape[1])
+            X_hard_filtered, y_hard_filtered, top2_labels=filtered_labels.tolist(),
+            k=min(8, X_hard_filtered.shape[1])
         )
-        print(f"  Features: {X_hard.shape[1]} → {X_reduced.shape[1]}")
+        print(f"  Features: {X_hard_filtered.shape[1]} → {X_reduced.shape[1]}")
 
         for idx in selected_idx:
             if idx < len(ALL_HPO_TERMS):
                 term = ALL_HPO_TERMS[idx]
                 print(f"    Qubit {selected_idx.index(idx)}: {term} ({HPO_TERMS.get(term, '?')})")
 
-        # Normalize for quantum
+        # Normalize for quantum encoding: map features to [0, π]
         X_norm = normalize_for_quantum(X_reduced)
 
-        # Split
+        # Split — use stratification only if all classes have enough members
         test_size = max(2, len(X_norm) // 5)
+        _, split_counts = np.unique(y_filtered, return_counts=True)
+        use_stratify = np.all(split_counts >= 2)
+
         X_train, X_test, y_train, y_test = train_test_split(
             X_norm, y_filtered, test_size=test_size,
-            random_state=42, stratify=y_filtered
+            random_state=42, stratify=y_filtered if use_stratify else None
         )
         print(f"\n  Train: {len(X_train)}, Test: {len(X_test)}")
 
-        # Quantum kernel
+        # Quantum kernel computation
         print("\n--- Quantum Kernel Computation ---")
         n_qubits = X_train.shape[1]
         kernel = create_quantum_kernel(n_features=n_qubits)
 
         t0 = time.time()
         K_train, K_test = compute_kernel_matrices(kernel, X_train, X_test)
-        print(f"  Kernel time: {time.time()-t0:.2f}s")
+        kernel_time = time.time() - t0
+        print(f"  Kernel computation time: {kernel_time:.2f}s")
 
-        # QSVM
+        # Validate kernel matrix (Mercer's conditions)
+        val = validate_kernel_matrix(K_train)
+        print(f"  Kernel validation: symmetric={val['is_symmetric']}, PSD={val['is_psd']}, "
+              f"diagonal≈1.0={val['is_normalized']}")
+
+        # QSVM training
         print("\n--- Quantum SVM ---")
         qsvm = train_quantum_svm(K_train, y_train)
         q_metrics = evaluate_qsvm(qsvm, K_test, y_test)
-        print(f"  QSVM: Acc={q_metrics['accuracy']:.4f}, F1={q_metrics['macro_f1']:.4f}")
+        print(f"  QSVM Accuracy: {q_metrics['accuracy']:.4f}")
+        print(f"  QSVM Macro-F1: {q_metrics['macro_f1']:.4f}")
 
-        # Classical benchmark
+        # Classical benchmark on same data/split
         print("\n--- Classical RBF-SVM (Same Data/Split) ---")
         quantum_results = {
             'qsvm': qsvm,
@@ -350,6 +377,16 @@ def phase4_quantum_resolver(X_hard, y_hard):
         benchmark = benchmark_quantum_vs_classical(
             quantum_results, X_train, X_test, y_train, y_test
         )
+        print(f"  Classical Accuracy: {benchmark['classical_accuracy']:.4f}")
+        print(f"  Classical Macro-F1: {benchmark['classical_macro_f1']:.4f}")
+        print(f"  McNemar p-value:   {benchmark.get('p_value', 'N/A')}")
+        print(f"  Conclusion:        {benchmark.get('conclusion', 'N/A')}")
+
+        # Add quantum F1 to benchmark for summary
+        benchmark['quantum_f1'] = q_metrics['macro_f1']
+        benchmark['quantum_accuracy'] = q_metrics['accuracy']
+        benchmark['mcnemar_p_value'] = benchmark.get('p_value', 1.0)
+
         return benchmark
 
     except ImportError as e:
@@ -357,7 +394,7 @@ def phase4_quantum_resolver(X_hard, y_hard):
         print(f"  pip install qiskit qiskit-machine-learning qiskit-algorithms qiskit-aer")
         return None
     except Exception as e:
-        print(f"  Error: {e}")
+        print(f"  Quantum phase error: {e}")
         traceback.print_exc()
         return None
 
@@ -408,13 +445,15 @@ def phase6_report(cv_results, cal_metrics, confusion_analysis, quantum_benchmark
     common_section = "\n## 6. Common Disease Classifiers (Real Data)\n\n"
     if bc_results:
         common_section += f"### Breast Cancer (Wisconsin Dataset — 569 real patients)\n"
-        common_section += f"- **Accuracy:** {bc_results.get('overall_accuracy', 'N/A'):.4f}\n"
-        common_section += f"- **Macro-F1:** {bc_results.get('overall_f1', 'N/A'):.4f}\n"
+        common_section += f"- **Accuracy:** {bc_results['accuracy']:.4f}\n"
+        common_section += f"- **Macro-F1:** {bc_results['f1']:.4f}\n"
+        common_section += f"- **AUC-ROC:** {bc_results['auc_roc']:.4f}\n"
         common_section += f"- **Data:** REAL (sklearn.datasets.load_breast_cancer)\n\n"
     if pk_results:
         common_section += f"### Parkinson's Disease (Voice Measurements)\n"
-        common_section += f"- **Accuracy:** {pk_results.get('overall_accuracy', 'N/A'):.4f}\n"
-        common_section += f"- **Macro-F1:** {pk_results.get('overall_f1', 'N/A'):.4f}\n\n"
+        common_section += f"- **Accuracy:** {pk_results['accuracy']:.4f}\n"
+        common_section += f"- **Macro-F1:** {pk_results['f1']:.4f}\n"
+        common_section += f"- **AUC-ROC:** {pk_results['auc_roc']:.4f}\n\n"
 
     report_text += common_section
 
@@ -512,21 +551,23 @@ def main():
     print(f"  Total time: {t_total:.1f}s")
     print(f"  Common diseases:")
     if bc_results:
-        print(f"    ✓ Breast Cancer — Acc: {bc_results.get('overall_accuracy', 0):.4f} (REAL data)")
+        print(f"    ✓ Breast Cancer — Acc: {bc_results['accuracy']:.4f}, F1: {bc_results['f1']:.4f} (REAL data)")
     else:
-        print(f"    ✗ Breast Cancer — not run")
+        print(f"    ✗ Breast Cancer — failed")
     if pk_results:
-        print(f"    ✓ Parkinson's  — Acc: {pk_results.get('overall_accuracy', 0):.4f}")
+        print(f"    ✓ Parkinson's  — Acc: {pk_results['accuracy']:.4f}, F1: {pk_results['f1']:.4f}")
     else:
-        print(f"    ✗ Parkinson's  — not run")
+        print(f"    ✗ Parkinson's  — failed")
     print(f"  Rare diseases:")
     print(f"    ✓ Classical XGBoost — F1: {cv_results.get('overall_macro_f1', 0):.4f}")
     print(f"    ✓ Confusion detector — {confusion_analysis.get('hard_rate', 0):.1%} hard")
     if quantum_benchmark:
         print(f"    ✓ Quantum QSVM — F1: {quantum_benchmark.get('quantum_f1', 0):.4f}")
+        print(f"    ✓ Classical SVM — F1: {quantum_benchmark.get('classical_macro_f1', 0):.4f}")
         print(f"    ✓ McNemar's p-value: {quantum_benchmark.get('mcnemar_p_value', 'N/A')}")
+        print(f"    ✓ Conclusion: {quantum_benchmark.get('conclusion', 'N/A')}")
     else:
-        print(f"    ✗ Quantum QSVM — not run (install qiskit)")
+        print(f"    ✗ Quantum QSVM — failed (check errors above)")
     print(f"\n  Reports: benchmarks/benchmark_report.md")
     print("═" * 70)
 

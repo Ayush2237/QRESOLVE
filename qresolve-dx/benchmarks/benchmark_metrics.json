@@ -1,5 +1,5 @@
 {
-  "generated": "2026-09-13T23:44:13.643252",
+  "generated": "2026-09-14T12:18:37.322128",
   "classical_cv": {
     "n_splits": 5,
     "folds": [
@@ -137,5 +137,13 @@
     "hard_case_accuracy": 1.0,
     "easy_case_accuracy": 1.0
   },
-  "quantum_benchmark": null
+  "quantum_benchmark": {
+    "classical_accuracy": 0.9761904761904762,
+    "classical_macro_f1": 0.6624472573839663,
+    "quantum_accuracy": 0.9523809523809523,
+    "p_value": 1.0,
+    "conclusion": "No significant difference",
+    "quantum_f1": 0.5914529914529915,
+    "mcnemar_p_value": 1.0
+  }
 }
