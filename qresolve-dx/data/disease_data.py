@@ -70,7 +70,6 @@ HPO_TERMS: Dict[str, str] = {
     "HP:0001382": "Joint hypermobility",
     "HP:0001763": "Pes planus",
     "HP:0005294": "Protrusio acetabuli",
-    "HP:0003179": "Protrusio acetabuli",  # alias
     "HP:0002816": "Genu recurvatum",
     "HP:0001371": "Flexion contracture",
     "HP:0001182": "Camptodactyly",

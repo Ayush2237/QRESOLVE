@@ -46,7 +46,9 @@ def benchmark_quantum_vs_classical(quantum_results: Dict[str, Any], X_train: np.
     q_acc = q_eval.get("accuracy", 0.0)
     
     # Extract quantum predictions from the model if available, else recreate them
-    if "model" in quantum_results and "K_test" in quantum_results:
+    if "predictions" in quantum_results:
+        quantum_preds = quantum_results["predictions"]
+    elif "model" in quantum_results and "K_test" in quantum_results:
         quantum_preds = quantum_results["model"].predict(quantum_results["K_test"])
     else:
         # Fallback if raw K_test isn't passed here - we assume q_eval contains accurate accuracy
@@ -56,7 +58,7 @@ def benchmark_quantum_vs_classical(quantum_results: Dict[str, Any], X_train: np.
     conclusion = "No significant difference"
     
     # Run McNemar's if statsmodels is available and we have real quantum preds
-    if mcnemar is not None and "model" in quantum_results and "K_test" in quantum_results:
+    if mcnemar is not None and ("predictions" in quantum_results or "model" in quantum_results):
         # Contingency table
         both_correct = np.sum((quantum_preds == y_test) & (classical_preds == y_test))
         q_correct_c_wrong = np.sum((quantum_preds == y_test) & (classical_preds != y_test))
