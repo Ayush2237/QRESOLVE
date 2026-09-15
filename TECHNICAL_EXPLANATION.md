@@ -1,81 +1,140 @@
-# QResolve-Dx: Technical Architecture & Mathematical Rationale
+# 🧬 QResolve-Dx: Deep Technical Architecture & Mathematical Rationale
 
-This document provides a deep dive into the "why" and "how" behind the code. If judges ask you why a specific algorithm, formula, or technology was chosen, you will find the exact scientific and architectural justifications here.
+![Architecture](https://img.shields.io/badge/Architecture-Two--Tier-blue)
+![Quantum](https://img.shields.io/badge/Quantum-Qiskit_2.x-6929C4)
+![ML](https://img.shields.io/badge/Classical_ML-XGBoost-F37626)
+![Math](https://img.shields.io/badge/Mathematics-Information_Theory-009688)
 
----
-
-## 1. System Architecture: Why a "Two-Tier" Approach?
-
-**The Problem**: Quantum computing is currently computationally expensive and slow to simulate. Running every patient with a common cold through a quantum computer is a waste of resources. 
-
-**The Solution**: QResolve-Dx uses a **Two-Tier Triage Architecture**:
-* **Tier 1 (Classical)**: Handles 80% of cases using fast, cheap classical algorithms (XGBoost).
-* **Tier 2 (Quantum)**: A "Confusion Detector" identifies the 20% of cases that classical models struggle to differentiate (e.g., Marfan vs. MASS phenotype). Only these mathematically "hard" cases are sent to the Quantum Support Vector Machine (QSVM).
-
-*Why this matters*: This proves to judges that your system is economically feasible and pragmatically designed for real-world hospital IT infrastructure.
+This document serves as the **comprehensive engineering and scientific blueprint** for QResolve-Dx. It explains the exact flow of data, the mathematical formulas governing the logic, and the scientific justification for every technology chosen. 
 
 ---
 
-## 2. Classical Machine Learning: XGBoost & Probability Calibration
+## 🏗️ 1. Global Architecture Flow
 
-### Why XGBoost?
-For tabular medical data (rows of patients, columns of symptoms), tree-based models consistently outperform deep learning (Neural Networks). XGBoost handles missing medical records gracefully and naturally captures non-linear symptom interactions.
+Medical diagnosis is fundamentally a routing problem. Standard algorithms waste compute power treating every patient equally. QResolve-Dx implements a **Two-Tier Triage Architecture** to optimize computational cost while maximizing diagnostic accuracy.
 
-### Why Isotonic Probability Calibration?
-*(Code: `CalibratedClassifierCV` in `breast_cancer.py` and `parkinsons.py`)*
-Standard ML models output scores, not true clinical probabilities. If a raw XGBoost model outputs `0.8`, it doesn't strictly mean there is an 80% chance the patient has the disease. 
-**Isotonic Calibration** mathematically maps the model's raw output to a true probability distribution. This is critical in healthcare, where a doctor needs to know if "90% confidence" actually means 9 out of 10 patients have the disease.
+```mermaid
+graph TD
+    A[Patient Symptoms] --> B{Disease Category}
+    B -->|Common| C[Tier 1: Classical Pipeline]
+    B -->|Rare/Complex| D[Tier 2: Rare Pipeline]
+    
+    C --> C1[Wisconsin / UCI Real Datasets]
+    C1 --> C2[XGBoost + Isotonic Calibration]
+    C2 --> C3[Final Diagnosis]
+    
+    D --> D1[HPO-Weighted Feature Extraction]
+    D1 --> D2[Classical Triage XGBoost]
+    D2 --> D3{Confusion Detector}
+    
+    D3 -->|Margin > τ (Easy)| D4[Classical Diagnosis]
+    D3 -->|Margin < τ (Hard)| D5[Quantum QSVM Resolver]
+    
+    D5 --> D6[ZZFeatureMap Hilbert Space]
+    D6 --> D7[Quantum Diagnosis]
+    
+    C3 --> E[SHAP Explainability]
+    D4 --> E
+    D7 --> E
+    
+    E --> F[Bayesian Next-Test Recommender]
+```
 
 ---
 
-## 3. Quantum Machine Learning: QSVM & ZZFeatureMap
+## 📊 2. Data Strategy & Feasibility
 
-### Why Quantum Computing?
-In rare connective tissue disorders, symptoms are highly correlated and overlapping. Classical kernels (like the RBF kernel in standard SVMs) map data into a continuous space, but often fail to separate highly entangled phenotypic profiles.
+### The Common Disease Pipeline
+For common diseases (Breast Cancer, Parkinson's), the system trains on **100% real clinical datasets** (Wisconsin Cytology, Oxford UCI Voice). This proves the classical pipeline works on real-world noise and distributions.
 
-### How `ZZFeatureMap` Works
-*(Code: `models/quantum/zz_kernel.py`)*
-Based on the landmark 2019 paper by Havlíček et al., the `ZZFeatureMap` encodes classical symptom data into a quantum state (Hilbert space). 
-1. It applies Hadamard gates to put qubits into superposition.
-2. It uses `ZZ` entanglement gates to capture 2nd-order correlations between symptoms (e.g., how Symptom A and Symptom B interact).
-3. The quantum kernel calculates the distance between two patients in this quantum space using the formula: $K(x,y) = |\langle\Phi(y)|\Phi(x)\rangle|^2$. 
+### The Rare Disease Pipeline (Synthetic yet Rigorous)
+*Where do we get data for rare diseases when HIPAA protects it and cases are scarce?*
+We solve this by generating synthetic patients using **Real Clinical Probabilities** from the Human Phenotype Ontology (HPO).
 
-Because this quantum feature space is exponentially large, the QSVM can draw a clear hyperplane between diseases (like Marfan and Loeys-Dietz) that look identical to classical computers. We simulate this exact quantum hardware behavior using Qiskit's `StatevectorSampler`.
+**The Mathematics of Generation (`generate_patients.py`)**:
+For a disease $D$ and a symptom $S$, the HPO database gives us the exact clinical frequency $P(S | D)$. 
+To generate a synthetic patient for disease $D$, we run a **Bernoulli Trial** for every known symptom:
+$$X_S \sim \text{Bernoulli}(P(S | D))$$
+This ensures that while the specific patient rows are synthetic, the **statistical manifold of the dataset is clinically authentic**.
 
 ---
 
-## 4. Information Theory: Lin Similarity & MICA
+## 🌲 3. Classical Triage & Information Theory
 
-### Why not just count shared symptoms?
-If Patient A and Patient B both have a "Headache", that doesn't mean they have the same disease (Headache has low Information Content). But if they both have "Ectopia Lentis" (dislocated eye lenses), they very likely have the same rare disease (High Information Content).
+Before we use Quantum ML, we push the data through a highly optimized classical pipeline. 
 
-### How Lin Similarity Works
-*(Code: `models/classical/features.py`)*
-We use **Shannon Information Content (IC)**. The IC of a symptom is $IC = -\log(p)$, where $p$ is the frequency of the symptom in the population.
-To compare two different symptoms, we use **Lin's Semantic Similarity** formula: 
+### Information Content (IC) & Lin Similarity (`features.py`)
+Counting how many symptoms two patients share is medically naive. A shared "Headache" is meaningless; a shared "Ectopia Lentis" (dislocated lens) is highly diagnostic.
+
+We use **Shannon Information Theory**:
+$$IC(S) = -\log_2(P(S))$$
+Rare symptoms have high IC; common symptoms have low IC. 
+
+To compare symptoms, we use **Lin's Semantic Similarity**:
 $$sim(t_1, t_2) = \frac{2 \cdot IC(MICA)}{IC(t_1) + IC(t_2)}$$
-Where **MICA** is the *Most Informative Common Ancestor* in the Human Phenotype Ontology graph. This mathematically proves how genetically related two symptoms are.
+Where **MICA** (Most Informative Common Ancestor) is found by traversing the genetic/phenotypic Knowledge Graph. This ensures the XGBoost model understands the genetic weight of symptoms before making a prediction.
+
+### Isotonic Probability Calibration (`breast_cancer.py`, `parkinsons.py`)
+Raw XGBoost outputs a "score" between 0 and 1, but it is **not a true probability**. We apply **Isotonic Regression Calibration** to mathematically force the scores into true probabilities. If our calibrated model says `0.85`, it means exactly 85% of patients with that score have the disease. 
+
+### The Confusion Detector (`run_pipeline.py`)
+To save quantum compute costs, we calculate the classification margin:
+$$\text{Margin} = P(\text{Top Disease}) - P(\text{Runner-Up Disease})$$
+If $\text{Margin} < \tau$ (e.g., 0.03), the classical model is "confused". Only these computationally "hard" cases are passed to the Quantum Resolver.
 
 ---
 
-## 5. Clinical Explainability: SHAP & Bayesian Next-Test
+## ⚛️ 4. The Quantum Resolver (The Core Innovation)
 
-Doctors will not use an AI if they don't understand it (the "Black Box" problem). 
+### Why Classical Fails
+In connective tissue disorders (like Marfan vs. Loeys-Dietz), symptoms are highly entangled. The classical RBF (Radial Basis Function) kernel maps data into a continuous space, but often cannot find a hyperplane to separate these entangled phenotypic profiles.
 
-### SHAP (SHapley Additive exPlanations)
-*(Code: `explain/shap_explain.py`)*
-Based on cooperative game theory, SHAP mathematically distributes the "credit" for a diagnosis among the symptoms. It tells the doctor exactly which symptom pushed the diagnosis toward Marfan syndrome, and which symptom pushed it away.
+### The Quantum Solution (`zz_kernel.py`)
+We implement a **Quantum Support Vector Machine (QSVM)** using the `ZZFeatureMap` (Havlíček et al., 2019, *Nature*). 
 
-### Bayesian Next-Test Recommender
-*(Code: `explain/next_test_recommender.py`)*
-If the AI is only 60% sure, what should the doctor do next?
-Instead of randomly ordering expensive MRI scans, the system calculates the **Information Gain** (reduction in Shannon Entropy) for every possible untested symptom. 
-It uses Bayesian probability (comparing the *Prior* probability to the expected *Posterior* probability) to recommend the exact lab test that will provide the most mathematical clarity between the top two diseases.
+The `ZZFeatureMap` encodes classical symptom data $x$ into a quantum state $|\Phi(x)\rangle$:
+$$|\Phi(x)\rangle = U_{\Phi(x)}|0\rangle^{\otimes n}$$
+Where the unitary operator applies Hadamard gates (superposition) and $ZZ$ rotation gates (entanglement). The $ZZ$ gates specifically map 2nd-order non-linear correlations between symptoms into a high-dimensional **Hilbert Space**.
+
+We then calculate the **Quantum Kernel Matrix**:
+$$K(x,y) = |\langle\Phi(y)|\Phi(x)\rangle|^2$$
+Using Qiskit's `StatevectorSampler`, we compute the exact fidelity (distance) between patients in this quantum space. Because the space is exponentially large and inherently non-linear, the SVM can easily draw a hyperplane to separate the previously "confused" diseases.
+
+**Mathematical Verification**: The code automatically calculates the eigenvalues of the resulting kernel matrix to prove it satisfies **Mercer's Conditions** (Positive Semi-Definite), proving the math is sound.
 
 ---
 
-## 6. The Knowledge Graph (Neo4j)
+## 🧠 5. Clinical Trust & Explainability
 
-*(Code: `graph/schema.cypher`)*
-Medical data is not flat (like a spreadsheet); it is a graph. Genes mutate to cause Proteins to fold incorrectly, which cause Diseases, which manifest as Symptoms. 
-By drafting a Knowledge Graph schema, we allow the AI to traverse these relationships. For example, the AI can realize that two distinct diseases are highly similar because they are caused by mutations on the *same gene cluster*, even if their outward symptoms look different.
+Doctors cannot act on "Black Box" predictions. QResolve-Dx provides two layers of deep explainability.
+
+### Layer 1: SHAP (Game Theory) (`shap_explain.py`)
+We use **Shapley Additive exPlanations (SHAP)** to explain the XGBoost predictions. Rooted in cooperative game theory, SHAP calculates the exact marginal contribution of each symptom to the final diagnosis. 
+* *Example Output*: "Aortic Root Dilatation pushed the diagnosis towards Marfan by +0.42 points, but the lack of Bifid Uvula pushed it away from Loeys-Dietz by -0.15 points."
+
+### Layer 2: Bayesian Next-Test Recommender (`next_test_recommender.py`)
+If the model is unsure (e.g., Marfan 51% vs MASS Phenotype 49%), what should the doctor do next? Instead of guessing, we use **Information Gain**.
+
+For every untested symptom, we calculate the expected reduction in Shannon Entropy:
+$$IG(T) = H(\text{Prior}) - \mathbb{E}[H(\text{Posterior} | T)]$$
+The system recommends the exact clinical test (e.g., "Lumbosacral MRI for Dural Ectasia") that maximizes Information Gain. It explicitly compares the prior to the posterior to tell the doctor: *"If this MRI is positive, Marfan becomes more likely. If negative, MASS phenotype becomes more likely."*
+
+---
+
+## 🗂️ 6. Codebase File Mapping
+
+If you need to find the exact implementation of the concepts above, reference this table:
+
+| Concept / Technology | Implementation File | Key Function / Class |
+|----------------------|---------------------|----------------------|
+| **Synthetic HPO Generation** | `data/generate_patients.py` | `generate_synthetic_patients()` |
+| **Lin Similarity / MICA** | `models/classical/features.py` | `compute_lin_similarity()` |
+| **XGBoost & Calibration** | `models/common/breast_cancer.py` | `CalibratedClassifierCV(base_xgb)` |
+| **Confusion Margin Logic** | `run_pipeline.py` (Phase 3) | `df['margin'] < margin_tau` |
+| **Quantum ZZFeatureMap** | `models/quantum/zz_kernel.py` | `ZZFeatureMap`, `StatevectorSampler` |
+| **Mercer's Condition Check** | `models/quantum/zz_kernel.py` | `validate_kernel_matrix(K)` |
+| **SHAP Explanations** | `explain/shap_explain.py` | `shap.TreeExplainer()` |
+| **Bayesian Information Gain**| `explain/next_test_recommender.py`| `compute_information_gain()` |
+
+---
+*Built for the Smart India Hackathon. Bridging the gap between classical efficiency and quantum precision in healthcare.*
