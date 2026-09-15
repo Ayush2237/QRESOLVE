@@ -77,6 +77,16 @@ python main.py
 ```
 *The API will be available at `http://localhost:8000`. You can view the interactive Swagger UI at `http://localhost:8000/docs`.*
 
+### Starting the Frontend UI
+Launch the Vite React frontend to interact with the diagnostic pipeline visually:
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+*The application UI will be available at `http://localhost:5173`.*
+
 ---
 
 ## 🌐 API Endpoints
