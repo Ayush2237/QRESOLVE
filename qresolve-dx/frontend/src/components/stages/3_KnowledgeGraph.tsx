@@ -4,161 +4,60 @@ import { Card } from '../common/Card';
 import { Button } from '../common/Button';
 import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import { api } from '../../lib/api';
-
-type Node = { id: string; group: 'disease' | 'symptom'; label: string; x?: number; y?: number };
-type Link = { source: string; target: string };
-
-type GraphData = { nodes: Node[]; links: Link[] };
-
-const GRAPHS: Record<string, GraphData> = {
-  'CASE-BC01': {
-    nodes: [
-      { id: 'bc', group: 'disease', label: 'Breast Cancer (Ductal)' },
-      { id: 'fibro', group: 'disease', label: 'Fibroadenoma' },
-      { id: 'cyst', group: 'disease', label: 'Cyst' },
-      { id: 'mass', group: 'symptom', label: 'Irregular Mass' },
-      { id: 'micro', group: 'symptom', label: 'Microcalcifications' },
-      { id: 'dimple', group: 'symptom', label: 'Skin Dimpling' },
-      { id: 'smooth', group: 'symptom', label: 'Smooth Mobile Mass' },
-      { id: 'pain', group: 'symptom', label: 'Cyclic Breast Pain' },
-    ],
-    links: [
-      { source: 'bc', target: 'mass' },
-      { source: 'bc', target: 'micro' },
-      { source: 'bc', target: 'dimple' },
-      { source: 'fibro', target: 'smooth' },
-      { source: 'fibro', target: 'mass' },
-      { source: 'cyst', target: 'pain' },
-      { source: 'cyst', target: 'smooth' },
-    ],
-  },
-  'CASE-PD01': {
-    nodes: [
-      { id: 'pd', group: 'disease', label: "Parkinson's Disease" },
-      { id: 'et', group: 'disease', label: 'Essential Tremor' },
-      { id: 'msa', group: 'disease', label: 'Multiple System Atrophy' },
-      { id: 'tremor', group: 'symptom', label: 'Resting Tremor' },
-      { id: 'brady', group: 'symptom', label: 'Bradykinesia' },
-      { id: 'rigid', group: 'symptom', label: 'Rigidity' },
-      { id: 'action', group: 'symptom', label: 'Action Tremor' },
-      { id: 'postural', group: 'symptom', label: 'Postural Instability' },
-    ],
-    links: [
-      { source: 'pd', target: 'tremor' },
-      { source: 'pd', target: 'brady' },
-      { source: 'pd', target: 'rigid' },
-      { source: 'pd', target: 'postural' },
-      { source: 'et', target: 'action' },
-      { source: 'et', target: 'tremor' },
-      { source: 'msa', target: 'postural' },
-      { source: 'msa', target: 'rigid' },
-    ],
-  },
-  'CASE-MF01': {
-    nodes: [
-      { id: 'marfan', group: 'disease', label: 'Marfan Syndrome' },
-      { id: 'lds', group: 'disease', label: 'Loeys-Dietz Syndrome' },
-      { id: 'veds', group: 'disease', label: 'vEDS' },
-      { id: 'aortic', group: 'symptom', label: 'Aortic Root Dilation' },
-      { id: 'pectus', group: 'symptom', label: 'Pectus Excavatum' },
-      { id: 'lens', group: 'symptom', label: 'Ectopia Lentis' },
-      { id: 'uvula', group: 'symptom', label: 'Bifid Uvula' },
-      { id: 'arachno', group: 'symptom', label: 'Arachnodactyly' },
-    ],
-    links: [
-      { source: 'marfan', target: 'aortic' },
-      { source: 'marfan', target: 'pectus' },
-      { source: 'marfan', target: 'lens' },
-      { source: 'marfan', target: 'arachno' },
-      { source: 'lds', target: 'aortic' },
-      { source: 'lds', target: 'pectus' },
-      { source: 'lds', target: 'uvula' },
-      { source: 'veds', target: 'aortic' },
-    ],
-  },
-  'CASE-ED01': {
-    nodes: [
-      { id: 'eds', group: 'disease', label: 'Ehlers-Danlos Syndrome' },
-      { id: 'marfan', group: 'disease', label: 'Marfan Syndrome' },
-      { id: 'jhs', group: 'disease', label: 'Joint Hypermobility Syndrome' },
-      { id: 'hyper', group: 'symptom', label: 'Joint Hypermobility' },
-      { id: 'translucent', group: 'symptom', label: 'Translucent Skin' },
-      { id: 'disloc', group: 'symptom', label: 'Recurrent Dislocations' },
-      { id: 'bruise', group: 'symptom', label: 'Easy Bruising' },
-      { id: 'aortic', group: 'symptom', label: 'Aortic Root Dilation' },
-    ],
-    links: [
-      { source: 'eds', target: 'hyper' },
-      { source: 'eds', target: 'translucent' },
-      { source: 'eds', target: 'disloc' },
-      { source: 'eds', target: 'bruise' },
-      { source: 'marfan', target: 'hyper' },
-      { source: 'marfan', target: 'aortic' },
-      { source: 'jhs', target: 'hyper' },
-      { source: 'jhs', target: 'disloc' },
-    ],
-  },
-  'CASE-LD01': {
-    nodes: [
-      { id: 'lds', group: 'disease', label: 'Loeys-Dietz Syndrome' },
-      { id: 'marfan', group: 'disease', label: 'Marfan Syndrome' },
-      { id: 'veds', group: 'disease', label: 'vEDS (Vascular)' },
-      { id: 'tortuosity', group: 'symptom', label: 'Arterial Tortuosity' },
-      { id: 'hypertelo', group: 'symptom', label: 'Hypertelorism' },
-      { id: 'uvula', group: 'symptom', label: 'Bifid Uvula' },
-      { id: 'aneurysm', group: 'symptom', label: 'Aortic Aneurysm' },
-      { id: 'scoliosis', group: 'symptom', label: 'Scoliosis' },
-    ],
-    links: [
-      { source: 'lds', target: 'tortuosity' },
-      { source: 'lds', target: 'hypertelo' },
-      { source: 'lds', target: 'uvula' },
-      { source: 'lds', target: 'aneurysm' },
-      { source: 'marfan', target: 'aneurysm' },
-      { source: 'marfan', target: 'scoliosis' },
-      { source: 'veds', target: 'aneurysm' },
-      { source: 'veds', target: 'tortuosity' },
-    ],
-  },
-};
+import type { GraphNode, GraphLink, GraphData } from '../../types';
 
 export const KnowledgeGraph = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const { id } = useParams();
-  const [nodes, setNodes] = useState<Node[]>([]);
+  
+  const [nodes, setNodes] = useState<GraphNode[]>([]);
   const [links, setLinks] = useState<any[]>([]);
+  
+  const [graphData, setGraphData] = useState<GraphData | null>(null);
   const [isGenerating, setIsGenerating] = useState(true);
   const [isTriaging, setIsTriaging] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const graphData = GRAPHS[id || ''] || GRAPHS['CASE-MF01'];
+  useEffect(() => {
+    const fetchGraph = async () => {
+      try {
+        const confirmedTerms = location.state?.confirmedTerms || [];
+        if (confirmedTerms.length === 0) {
+          setIsGenerating(false);
+          return;
+        }
+        
+        const data = await api.getGraph(confirmedTerms);
+        setGraphData(data);
+      } catch (err: any) {
+        setError(err.message || 'Failed to fetch graph data');
+      } finally {
+        setIsGenerating(false);
+      }
+    };
+    
+    fetchGraph();
+  }, [location.state?.confirmedTerms]);
 
   useEffect(() => {
-    // Simulate graph generation delay
-    const timer = setTimeout(() => {
-      setIsGenerating(false);
-    }, 1500);
-    return () => clearTimeout(timer);
-  }, []);
-
-  useEffect(() => {
-    if (isGenerating) return;
+    if (isGenerating || !graphData) return;
+    
     // Copy data so D3 can mutate the positions
-    const nodesCopy = graphData.nodes.map(d => ({ ...d }));
+    const nodesCopy = graphData.nodes.map(d => ({ ...d, x: undefined, y: undefined }));
     const linksCopy = graphData.links.map(d => ({ ...d }));
 
-    const simulation = d3.forceSimulation(nodesCopy)
+    const simulation = d3.forceSimulation(nodesCopy as any)
       .force('link', d3.forceLink(linksCopy).id((d: any) => d.id).distance(130))
       .force('charge', d3.forceManyBody().strength(-650))
       .force('center', d3.forceCenter(400, 250))
       .on('tick', () => {
-        setNodes([...nodesCopy]);
+        setNodes([...nodesCopy as any]);
         setLinks([...linksCopy]);
       });
 
     return () => { simulation.stop(); };
-  }, [id, isGenerating]);
+  }, [graphData, isGenerating]);
 
   const handleRunTriage = async () => {
     const confirmedTerms = location.state?.confirmedTerms || [];
@@ -185,7 +84,7 @@ export const KnowledgeGraph = () => {
         {isGenerating ? (
           <div className="absolute inset-0 flex flex-col items-center justify-center bg-surface/80 z-20">
             <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin mb-4"></div>
-            <p className="text-ink font-medium">Querying OMIM & Orphanet...</p>
+            <p className="text-ink font-medium">Querying Knowledge Graph...</p>
             <p className="text-ink-muted text-sm mt-1">Generating unified disease-symptom graph</p>
           </div>
         ) : null}
@@ -217,7 +116,7 @@ export const KnowledgeGraph = () => {
           </g>
           {/* Render Nodes */}
           <g>
-            {nodes.map((node, i) => {
+            {nodes.map((node: any, i) => {
               const isDisease = node.group === 'disease';
               return (
                 <g key={i} transform={`translate(${node.x || 0},${node.y || 0})`} className="cursor-pointer transition-transform hover:scale-110">
@@ -253,7 +152,7 @@ export const KnowledgeGraph = () => {
 
       <div className="flex justify-between items-center pt-4">
         <Button variant="outline" onClick={() => navigate(-1)}>← Back to NLP</Button>
-        <Button onClick={handleRunTriage} disabled={isGenerating || isTriaging}>
+        <Button onClick={handleRunTriage} disabled={isGenerating || isTriaging || (nodes.length === 0)}>
           {isTriaging ? 'Running Triage...' : 'Run Classical Triage →'}
         </Button>
       </div>

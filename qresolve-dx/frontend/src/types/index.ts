@@ -32,6 +32,8 @@ export type NextTest = {
   label: string;
   clinical_test: string;
   information_gain: number;
+  expected_outcome_positive: string;
+  expected_outcome_negative: string;
 };
 
 export type ExplainResponse = {
@@ -51,4 +53,56 @@ export type PatientCase = {
   currentStage: number; // 1-9
   diagnoseResponse?: DiagnoseResponse;
   explainResponse?: ExplainResponse;
+};
+
+export type BreastCancerRequest = {
+  features: Record<string, number>;
+};
+
+export type ParkinsonsRequest = {
+  features: Record<string, number>;
+};
+
+export type CommonDiseaseResponse = {
+  diagnosis: string;
+  probability: number;
+  confidence: number;
+};
+
+export type DiseaseInfo = {
+  id: string;
+  name: string;
+  category: 'common' | 'rare';
+  track: 'common' | 'classical' | 'quantum';
+  description: string;
+  genes: string[];
+  n_symptoms: number;
+};
+
+export type NLPResult = {
+  hpo_id: string;
+  label: string;
+  confirmed: boolean;
+};
+
+export type GraphNode = {
+  id: string;
+  group: 'disease' | 'symptom';
+  label: string;
+};
+
+export type GraphLink = {
+  source: string;
+  target: string;
+  type?: string;
+};
+
+export type GraphData = {
+  nodes: GraphNode[];
+  links: GraphLink[];
+};
+
+export type FeatureMetadata = {
+  feature_names: string[];
+  defaults: Record<string, number>;
 };

@@ -9,6 +9,7 @@ import { ConfusionDetection } from './components/stages/5_ConfusionDetection';
 import { QuantumResolver } from './components/stages/6_QuantumResolver';
 import { ExplainableOutput } from './components/stages/7_ExplainableOutput';
 import { NextTestRecommendation } from './components/stages/8_NextTestRecommendation';
+import { CommonDiseaseInput } from './components/stages/CommonDiseaseInput';
 
 
 function App() {
@@ -16,6 +17,24 @@ function App() {
     <BrowserRouter>
       <Routes>
         <Route path="/" element={<DoctorDashboard />} />
+        
+        <Route path="/common/breast_cancer" element={
+          <div className="min-h-screen bg-bg">
+            <header className="border-b border-border bg-surface px-8 py-6 flex justify-between items-center">
+              <h1 className="text-xl font-semibold text-ink cursor-pointer" onClick={() => window.location.href='/'}>QResolve</h1>
+            </header>
+            <CommonDiseaseInput diseaseType="breast-cancer" />
+          </div>
+        } />
+        
+        <Route path="/common/parkinsons" element={
+          <div className="min-h-screen bg-bg">
+            <header className="border-b border-border bg-surface px-8 py-6 flex justify-between items-center">
+              <h1 className="text-xl font-semibold text-ink cursor-pointer" onClick={() => window.location.href='/'}>QResolve</h1>
+            </header>
+            <CommonDiseaseInput diseaseType="parkinsons" />
+          </div>
+        } />
 
         <Route path="/case/:id" element={<MainLayout />}>
           <Route path="input" element={<PatientInput />} />
