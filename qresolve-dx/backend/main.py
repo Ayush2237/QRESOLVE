@@ -140,7 +140,7 @@ if HAS_FASTAPI:
         hpo_id: str
         label: str
         direction: str
-        importance: float
+        shap_value: float
 
     class NextTest(BaseModel):
         hpo_id: str
@@ -427,7 +427,7 @@ if HAS_FASTAPI:
                     hpo_id=feat.hpo_id,
                     label=feat.label,
                     direction="present" if feat.hpo_id in hpo_terms else "absent",
-                    importance=1.0 if feat.hpo_id in hpo_terms else 0.5,
+                    shap_value=1.0 if feat.hpo_id in hpo_terms else 0.5,
                 )
                 if feat.present_in == top_disease:
                     if feat.hpo_id in hpo_terms:
