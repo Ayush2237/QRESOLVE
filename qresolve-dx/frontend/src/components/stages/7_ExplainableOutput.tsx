@@ -52,12 +52,15 @@ export const ExplainableOutput = () => {
           
           <div className="space-y-6">
             <div>
-              <h4 className="text-xs font-semibold text-green-700 uppercase tracking-wider mb-2">Supporting Evidence</h4>
+              <h4 className="text-xs font-semibold text-green-700 uppercase tracking-wider mb-2">Supporting Evidence (SHAP Values)</h4>
               <div className="divide-y divide-border border border-border bg-gray-50/50">
                 {explainData.supporting_evidence.map((ev, i) => (
                   <div key={i} className="py-3 px-4 flex justify-between items-center text-sm">
                     <span className="font-medium text-ink">{ev.label}</span>
-                    <span className="text-ink-muted bg-white border border-border px-2 py-0.5 text-xs font-mono">{ev.direction}</span>
+                    <div className="flex items-center gap-3">
+                      <span className="text-green-700 font-mono text-xs font-bold">+{ev.shap_value.toFixed(4)}</span>
+                      <span className="text-ink-muted bg-white border border-border px-2 py-0.5 text-xs font-mono">{ev.direction}</span>
+                    </div>
                   </div>
                 ))}
                 {explainData.supporting_evidence.length === 0 && <div className="py-3 px-4 text-sm text-ink-muted">No explicit supporting evidence found.</div>}
@@ -65,12 +68,15 @@ export const ExplainableOutput = () => {
             </div>
 
             <div>
-              <h4 className="text-xs font-semibold text-red-700 uppercase tracking-wider mb-2">Counter Evidence</h4>
+              <h4 className="text-xs font-semibold text-red-700 uppercase tracking-wider mb-2">Counter Evidence (SHAP Values)</h4>
               <div className="divide-y divide-border border border-border bg-gray-50/50">
                 {explainData.against_evidence.map((ev, i) => (
                   <div key={i} className="py-3 px-4 flex justify-between items-center text-sm">
                     <span className="font-medium text-ink">{ev.label}</span>
-                    <span className="text-ink-muted bg-white border border-border px-2 py-0.5 text-xs font-mono">{ev.direction}</span>
+                    <div className="flex items-center gap-3">
+                      <span className="text-red-700 font-mono text-xs font-bold">{ev.shap_value.toFixed(4)}</span>
+                      <span className="text-ink-muted bg-white border border-border px-2 py-0.5 text-xs font-mono">{ev.direction}</span>
+                    </div>
                   </div>
                 ))}
                 {explainData.against_evidence.length === 0 && <div className="py-3 px-4 text-sm text-ink-muted">No counter evidence found.</div>}

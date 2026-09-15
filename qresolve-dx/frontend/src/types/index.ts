@@ -23,8 +23,8 @@ export type DiagnoseResponse = {
 export type EvidenceItem = {
   hpo_id: string;
   label: string;
-  direction: string; // 'present' | 'absent'
-  importance: number;
+  direction: string;
+  shap_value: number;
 };
 
 export type NextTest = {
