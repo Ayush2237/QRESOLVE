@@ -528,6 +528,25 @@ PAIRWISE_DISTINGUISHING: Dict[FrozenSet[str], List[DistinguishingFeature]] = {
         ),
     ],
 
+    # --- Loeys-Dietz vs MASS ---
+    frozenset(["Loeys-Dietz syndrome", "MASS phenotype"]): [
+        DistinguishingFeature(
+            "HP:0005116", "Arterial tortuosity",
+            present_in="Loeys-Dietz syndrome", absent_in="MASS phenotype",
+            clinical_test="CT/MR angiography of head, neck, and chest"
+        ),
+        DistinguishingFeature(
+            "HP:0000193", "Bifid uvula",
+            present_in="Loeys-Dietz syndrome", absent_in="MASS phenotype",
+            clinical_test="Oral cavity examination"
+        ),
+        DistinguishingFeature(
+            "HP:0002647", "Aortic dissection",
+            present_in="Loeys-Dietz syndrome", absent_in="MASS phenotype",
+            clinical_test="Aortic imaging with dissection risk stratification"
+        ),
+    ],
+
     # --- Loeys-Dietz vs Shprintzen-Goldberg ---
     frozenset(["Loeys-Dietz syndrome", "Shprintzen-Goldberg syndrome"]): [
         DistinguishingFeature(

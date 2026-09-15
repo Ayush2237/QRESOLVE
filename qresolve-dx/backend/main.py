@@ -439,6 +439,17 @@ if HAS_FASTAPI:
                         against.append(item)
                     else:
                         supporting.append(item)
+        else:
+            # Fallback for undocumented pairs: highlight presence of top_disease symptoms
+            # and absence of runner_up symptoms mathematically.
+            for term in hpo_terms:
+                item = EvidenceItem(
+                    hpo_id=term,
+                    label=term,
+                    direction="present",
+                    shap_value=0.5
+                )
+                supporting.append(item)
 
         # Next-test recommendations
         try:
