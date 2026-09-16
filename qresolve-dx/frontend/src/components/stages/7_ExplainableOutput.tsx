@@ -31,17 +31,21 @@ export const ExplainableOutput = () => {
   }, [triageResult]);
 
   if (!triageResult) return <div className="p-8">No case data found. <Button onClick={() => navigate(-1)}>Go Back</Button></div>;
-  if (isLoading) return <div className="p-8 text-ink-muted font-serif">Loading explainability matrices...</div>;
+  if (isLoading) return <div className="p-8 text-ink-muted font-serif">Loading SHAP explanations...</div>;
   if (error) return <div className="p-8 text-red-600 bg-red-50">Error fetching explanation: {error}</div>;
   if (!explainData) return null;
 
   const isQuantum = triageResult.quantum_used;
+  
+  // Calculate max importance for scaling bars
+  const allEvidences = [...explainData.supporting_evidence, ...explainData.against_evidence];
+  const maxImportance = Math.max(0.1, ...allEvidences.map(e => e.importance));
 
   return (
     <div className="space-y-6 animate-fade-in max-w-3xl">
       <div>
         <h2 className="text-xl font-semibold text-ink">7. Explainable Output</h2>
-        <p className="text-ink-muted text-sm mt-1">Feature contributions and causal rationale.</p>
+        <p className="text-ink-muted text-sm mt-1">SHAP value feature contributions and causal rationale.</p>
       </div>
 
       <Card className={`p-0 border-t-4 overflow-hidden ${isQuantum ? 'border-quantum' : 'border-primary'}`}>
@@ -50,7 +54,7 @@ export const ExplainableOutput = () => {
             Evidence for {explainData.top_diagnosis} vs {explainData.runner_up}
           </div>
           
-          <div className="space-y-6">
+          <div className="space-y-8">
             <div>
               <h4 className="text-xs font-semibold text-green-700 uppercase tracking-wider mb-2">Supporting Evidence (SHAP Values)</h4>
               <div className="divide-y divide-border border border-border bg-gray-50/50">

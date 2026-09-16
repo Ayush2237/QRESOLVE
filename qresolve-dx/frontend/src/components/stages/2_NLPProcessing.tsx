@@ -1,50 +1,39 @@
 import { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { Card } from '../common/Card';
 import { Button } from '../common/Button';
 import { Badge } from '../common/Badge';
+import { api } from '../../lib/api';
+import type { NLPResult } from '../../types';
 
 export const NLPProcessing = () => {
   const { id } = useParams();
   const navigate = useNavigate();
-  const [extractedTerms, setExtractedTerms] = useState<{ term: string, confirmed: boolean }[]>([]);
+  const location = useLocation();
+  const rawText = location.state?.rawText || '';
+  
+  const [extractedTerms, setExtractedTerms] = useState<NLPResult[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    // Simulate NLP extraction based on case type
-    const termsByCase: Record<string, { term: string, confirmed: boolean }[]> = {
-      'CASE-BC01': [
-        { term: 'Irregular breast mass', confirmed: true },
-        { term: 'Microcalcifications on mammogram', confirmed: true },
-        { term: 'No family history of breast cancer', confirmed: true },
-        { term: 'Skin dimpling', confirmed: false },
-      ],
-      'CASE-PD01': [
-        { term: 'Unilateral resting tremor', confirmed: true },
-        { term: 'Bradykinesia', confirmed: true },
-        { term: 'Rigidity', confirmed: true },
-        { term: 'Postural instability', confirmed: false },
-      ],
-      'CASE-MF01': [
-        { term: 'Aortic root aneurysm', confirmed: true },
-        { term: 'Pectus excavatum', confirmed: true },
-        { term: 'Arachnodactyly', confirmed: true },
-        { term: 'Ectopia lentis', confirmed: true },
-      ],
-      'CASE-ED01': [
-        { term: 'Joint hypermobility', confirmed: true },
-        { term: 'Skin translucency', confirmed: true },
-        { term: 'Bruising susceptibility', confirmed: true },
-        { term: 'Striae distensae', confirmed: true },
-      ],
-      'CASE-LD01': [
-        { term: 'Arterial tortuosity', confirmed: true },
-        { term: 'Hypertelorism', confirmed: true },
-        { term: 'Bifid uvula', confirmed: true },
-        { term: 'Aortic aneurysm', confirmed: true },
-      ],
+    const extractTerms = async () => {
+      try {
+        if (!rawText) {
+          setLoading(false);
+          return;
+        }
+        const terms = await api.extractNLP(rawText);
+        setExtractedTerms(terms);
+      } catch (err: any) {
+        setError(err.message || 'Failed to extract terms');
+      } finally {
+        setLoading(false);
+      }
     };
-    setExtractedTerms(termsByCase[id || ''] || termsByCase['CASE-MF01']);
-  }, [id]);
+    
+    extractTerms();
+  }, [rawText]);
 
   const handleConfirm = (index: number) => {
     const newTerms = [...extractedTerms];
@@ -53,7 +42,7 @@ export const NLPProcessing = () => {
   };
 
   const handleGenerateGraph = () => {
-    const confirmedTerms = extractedTerms.filter(t => t.confirmed).map(t => t.term);
+    const confirmedTerms = extractedTerms.filter(t => t.confirmed).map(t => t.hpo_id);
     navigate(`/case/${id}/graph`, { state: { confirmedTerms } });
   };
 
@@ -72,7 +61,12 @@ export const NLPProcessing = () => {
           <Badge variant="primary">High Confidence</Badge>
         </div>
         <div className="divide-y divide-border bg-surface">
-          {extractedTerms.map((term, idx) => (
+          {loading && <div className="p-6 text-ink-muted">Extracting terms from text...</div>}
+          {error && <div className="p-6 text-red-600">Error: {error}</div>}
+          {!loading && !error && extractedTerms.length === 0 && (
+            <div className="p-6 text-ink-muted">No HPO terms identified in the text.</div>
+          )}
+          {!loading && !error && extractedTerms.map((term, idx) => (
             <div key={idx} className={`p-4 px-6 flex items-center justify-between transition-colors ${!term.confirmed ? 'bg-gray-50/50 opacity-75' : ''}`}>
               <label className="flex items-center gap-4 cursor-pointer flex-1">
                 <input
@@ -82,7 +76,7 @@ export const NLPProcessing = () => {
                   className="w-4 h-4 text-primary rounded border-gray-300 focus:ring-primary cursor-pointer"
                 />
                 <span className={`font-medium ${term.confirmed ? 'text-ink' : 'text-ink-muted line-through'}`}>
-                  {term.term}
+                  {term.label} <span className="text-xs text-ink-muted ml-2">({term.hpo_id})</span>
                 </span>
               </label>
               {term.confirmed && <Badge variant="default" className="bg-gray-100 text-ink-muted text-[10px]">HPO Mapped</Badge>}

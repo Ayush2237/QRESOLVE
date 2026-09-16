@@ -94,3 +94,7 @@ npm run dev
 * `POST /diagnose`: Submit patient symptoms (HPO terms or text) and receive ranked differential diagnoses. Automatically routes to the quantum resolver if the case is flagged as "hard".
 * `GET /explain/{case_id}`: Retrieve SHAP evidence and Information-Gain-based next-test recommendations for a specific diagnosis.
 * `GET /benchmark/report`: Fetch the latest statistical benchmark comparing the Quantum vs. Classical models.
+* `GET /diseases`: Retrieve the catalog of common and rare diseases available in the system.
+* `POST /nlp/extract`: Extract Human Phenotype Ontology (HPO) terms from unstructured clinical text.
+* `POST /graph`: Generate D3-compatible Knowledge Graph data linking patient symptoms to matching diseases.
+* `GET /diseases/{disease_type}/features`: Fetch the required clinical feature metadata and schema for common disease ML inputs.

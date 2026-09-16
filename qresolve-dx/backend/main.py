@@ -41,7 +41,11 @@ from data.disease_data import (
     ALL_HPO_TERMS, HPO_TERM_INDEX, HPO_TERMS, NUM_CLASSES,
     KNOWN_CONFUSION_PAIRS, PAIRWISE_DISTINGUISHING,
     HPO_TO_CLINICAL_TEST, DISEASE_BY_NAME,
+    COMMON_DISEASES, RARE_DISEASES, RARE_DISEASE_NAMES
 )
+from graph.knowledge_graph import KnowledgeGraph
+from explain.shap_explain import explain_prediction
+from explain.next_test_recommender import recommend_next_test
 
 
 # ---------------------------------------------------------------------------
@@ -52,10 +56,15 @@ class AppState:
     """Holds loaded models and cached results."""
     calibrated_model = None
     xgb_model = None
+    breast_cancer_model = None
+    parkinsons_model = None
     ic_values: Dict[str, float] = {}
     case_store: Dict[str, dict] = {}  # case_id -> diagnosis result
     benchmark_data: Optional[dict] = None
     quantum_available: bool = False
+    kg: Optional[KnowledgeGraph] = None
+    X_all: Optional[np.ndarray] = None
+    y_all: Optional[np.ndarray] = None
 
 
 state = AppState()
@@ -78,6 +87,20 @@ def load_models():
         with open(xgb_path, 'rb') as f:
             state.xgb_model = pickle.load(f)
         print(f"  Loaded XGBoost model from {xgb_path}")
+
+    # Load Breast Cancer model
+    bc_path = os.path.join(processed_dir, 'breast_cancer_model.pkl')
+    if os.path.exists(bc_path):
+        with open(bc_path, 'rb') as f:
+            state.breast_cancer_model = pickle.load(f)
+        print(f"  Loaded Breast Cancer model from {bc_path}")
+
+    # Load Parkinson's model
+    pk_path = os.path.join(processed_dir, 'parkinsons_model.pkl')
+    if os.path.exists(pk_path):
+        with open(pk_path, 'rb') as f:
+            state.parkinsons_model = pickle.load(f)
+        print(f"  Loaded Parkinson's model from {pk_path}")
 
     # Load IC values
     ic_path = os.path.join(processed_dir, 'ic_values.json')
@@ -103,6 +126,23 @@ def load_models():
         import json
         with open(bench_path, 'r') as f:
             state.benchmark_data = json.load(f)
+
+    # Initialize Knowledge Graph
+    state.kg = KnowledgeGraph()
+    state.kg.build_from_disease_data()
+    print("  Knowledge Graph initialized")
+
+    # Load synthetic data for Quantum Resolver
+    try:
+        import pandas as pd
+        from data.generate_patients import build_feature_matrix
+        bench_csv = os.path.join(processed_dir, 'benchmark.csv')
+        if os.path.exists(bench_csv):
+            df = pd.read_csv(bench_csv)
+            state.X_all, state.y_all = build_feature_matrix(df)
+            print(f"  Loaded QSVM training data: {state.X_all.shape}")
+    except Exception as e:
+        print(f"  Failed to load QSVM data: {e}")
 
 
 # ---------------------------------------------------------------------------
@@ -147,6 +187,8 @@ if HAS_FASTAPI:
         label: str
         clinical_test: str
         information_gain: float
+        expected_outcome_positive: str
+        expected_outcome_negative: str
 
     class ExplainResponse(BaseModel):
         case_id: str
@@ -155,6 +197,29 @@ if HAS_FASTAPI:
         supporting_evidence: List[EvidenceItem]
         against_evidence: List[EvidenceItem]
         suggested_tests: List[NextTest]
+
+    class NLPExtractRequest(BaseModel):
+        text: str
+
+    class GraphRequest(BaseModel):
+        hpo_terms: List[str]
+
+    class BreastCancerRequest(BaseModel):
+        features: Dict[str, float] = Field(
+            ...,
+            description="Dictionary of 30 numerical features for Breast Cancer classification."
+        )
+
+    class ParkinsonsRequest(BaseModel):
+        features: Dict[str, float] = Field(
+            ...,
+            description="Dictionary of 22 voice features for Parkinson's classification."
+        )
+
+    class CommonDiseaseResponse(BaseModel):
+        diagnosis: str
+        probability: float
+        confidence: float
 
 
 # ---------------------------------------------------------------------------
@@ -445,8 +510,8 @@ if HAS_FASTAPI:
         hpo_terms = case["hpo_terms"]
         probs = np.array(case["probs"])
 
-        # Supporting / against evidence from distinguishing features
-        pair_key = frozenset([top_disease, runner_up])
+        # Supporting / against evidence from SHAP
+        model = state.calibrated_model or state.xgb_model
         supporting = []
         against = []
 
@@ -482,30 +547,18 @@ if HAS_FASTAPI:
 
         # Next-test recommendations
         try:
-            from explain.next_test_recommender import recommend_next_test
             recs = recommend_next_test(probs, DISEASE_NAMES, hpo_terms)
-            suggested_tests = [
-                NextTest(
+            for r in recs[:5]:
+                suggested_tests.append(NextTest(
                     hpo_id=r["hpo_id"],
                     label=r["label"],
                     clinical_test=r.get("clinical_test", ""),
                     information_gain=r["information_gain"],
-                )
-                for r in recs[:5]
-            ]
-        except Exception:
-            # Fallback: recommend based on distinguishing features
-            suggested_tests = []
-            for term in ALL_HPO_TERMS:
-                if term not in hpo_terms and term in HPO_TO_CLINICAL_TEST:
-                    suggested_tests.append(NextTest(
-                        hpo_id=term,
-                        label=HPO_TERMS.get(term, ""),
-                        clinical_test=HPO_TO_CLINICAL_TEST[term],
-                        information_gain=0.0,
-                    ))
-                    if len(suggested_tests) >= 5:
-                        break
+                    expected_outcome_positive=r.get("expected_outcome_positive", ""),
+                    expected_outcome_negative=r.get("expected_outcome_negative", "")
+                ))
+        except Exception as e:
+            print(f"Error generating recommendations: {e}")
 
         return ExplainResponse(
             case_id=case_id,
@@ -515,6 +568,181 @@ if HAS_FASTAPI:
             against_evidence=against,
             suggested_tests=suggested_tests,
         )
+
+    @app.post("/diagnose/breast-cancer", response_model=CommonDiseaseResponse)
+    async def diagnose_breast_cancer(request: BreastCancerRequest):
+        if not state.breast_cancer_model:
+            raise HTTPException(status_code=503, detail="Breast cancer model not loaded. Run pipeline first.")
+        
+        from models.common.breast_cancer import predict_breast_cancer
+        try:
+            result = predict_breast_cancer(state.breast_cancer_model, request.features)
+            return CommonDiseaseResponse(
+                diagnosis=str(result.get("prediction", "Unknown")).capitalize(),
+                probability=float(result.get("probability", 0.0)),
+                confidence=float(result.get("probability", 0.0))
+            )
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=str(e))
+
+    @app.post("/diagnose/parkinsons", response_model=CommonDiseaseResponse)
+    async def diagnose_parkinsons(request: ParkinsonsRequest):
+        if not state.parkinsons_model:
+            raise HTTPException(status_code=503, detail="Parkinson's model not loaded. Run pipeline first.")
+        
+        from models.common.parkinsons import predict_parkinsons
+        try:
+            result = predict_parkinsons(state.parkinsons_model, request.features)
+            return CommonDiseaseResponse(
+                diagnosis=str(result.get("diagnosis", "Unknown")),
+                probability=float(result.get("probability", 0.0)),
+                confidence=float(result.get("confidence", 0.0))
+            )
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=str(e))
+
+    @app.get("/diseases")
+    async def get_diseases():
+        """Get the disease catalog."""
+        catalog = []
+        # Add common diseases
+        catalog.append({
+            "id": "breast_cancer",
+            "name": "Breast Cancer",
+            "category": "common",
+            "track": "common",
+            "description": "30 Cellular Features — Wisconsin Dataset",
+            "genes": [],
+            "n_symptoms": 30
+        })
+        catalog.append({
+            "id": "parkinsons",
+            "name": "Parkinson's Disease",
+            "category": "common",
+            "track": "common",
+            "description": "22 Voice Features — Oxford Dataset",
+            "genes": [],
+            "n_symptoms": 22
+        })
+        # Add rare diseases
+        for d in ALL_DISEASES:
+            track = "quantum" if d.name in RARE_DISEASE_NAMES else "classical"
+            catalog.append({
+                "id": d.short_name,
+                "name": d.name,
+                "category": "rare",
+                "track": track,
+                "description": f"Genes: {', '.join(d.genes)}. OMIM: {d.omim_id}",
+                "genes": d.genes,
+                "n_symptoms": len(d.symptoms)
+            })
+        return catalog
+
+    @app.post("/nlp/extract")
+    async def nlp_extract(request: NLPExtractRequest):
+        """Extract HPO terms from clinical text."""
+        text = request.text.lower()
+        extracted = []
+        for hpo_id, label in HPO_TERMS.items():
+            if label.lower() in text:
+                extracted.append({
+                    "hpo_id": hpo_id,
+                    "label": label,
+                    "confirmed": True
+                })
+        return extracted
+
+    @app.post("/graph")
+    async def get_graph(request: GraphRequest):
+        """Generate D3 graph data for a set of HPO terms."""
+        if not state.kg:
+            raise HTTPException(status_code=503, detail="Knowledge Graph not initialized")
+        
+        nodes = []
+        links = []
+        added_nodes = set()
+        
+        # Add symptom nodes
+        for hpo_id in request.hpo_terms:
+            if hpo_id in state.kg.symptoms:
+                nodes.append({
+                    "id": hpo_id,
+                    "group": "symptom",
+                    "label": state.kg.symptoms[hpo_id].label
+                })
+                added_nodes.add(hpo_id)
+                
+        # Find diseases that have these symptoms
+        related_diseases = set()
+        for disease_id, symptoms in state.kg.disease_symptoms.items():
+            for hpo_id, _ in symptoms:
+                if hpo_id in request.hpo_terms:
+                    related_diseases.add(disease_id)
+                    
+        # Add disease nodes and links
+        for disease_id in related_diseases:
+            if disease_id in state.kg.diseases:
+                nodes.append({
+                    "id": disease_id,
+                    "group": "disease",
+                    "label": state.kg.diseases[disease_id].name
+                })
+                added_nodes.add(disease_id)
+                
+                # Links to symptoms
+                for hpo_id, _ in state.kg.disease_symptoms[disease_id]:
+                    if hpo_id in request.hpo_terms:
+                        links.append({
+                            "source": disease_id,
+                            "target": hpo_id
+                        })
+                        
+        # Add LOOKS_LIKE links between diseases in the subgraph
+        for d1 in related_diseases:
+            for d2, sim, _ in state.kg.disease_looks_like.get(d1, []):
+                if d2 in related_diseases and sim > 0:
+                    links.append({
+                        "source": d1,
+                        "target": d2,
+                        "type": "looks_like"
+                    })
+                    
+        return {"nodes": nodes, "links": links}
+
+    @app.get("/diseases/{disease_type}/features")
+    async def get_disease_features(disease_type: str):
+        """Get feature names and defaults for common diseases."""
+        if disease_type in ["breast-cancer", "breast_cancer"]:
+            defaults = {
+                "mean radius": 17.99, "mean texture": 10.38, "mean perimeter": 122.8, "mean area": 1001.0,
+                "mean smoothness": 0.1184, "mean compactness": 0.2776, "mean concavity": 0.3001,
+                "mean concave points": 0.1471, "mean symmetry": 0.2419, "mean fractal dimension": 0.07871,
+                "radius error": 1.095, "texture error": 0.9053, "perimeter error": 8.589, "area error": 153.4,
+                "smoothness error": 0.006399, "compactness error": 0.04904, "concavity error": 0.05373,
+                "concave points error": 0.01587, "symmetry error": 0.03003, "fractal dimension error": 0.006193,
+                "worst radius": 25.38, "worst texture": 17.33, "worst perimeter": 184.6, "worst area": 2019.0,
+                "worst smoothness": 0.1622, "worst compactness": 0.6656, "worst concavity": 0.7119,
+                "worst concave points": 0.2654, "worst symmetry": 0.4601, "worst fractal dimension": 0.1189
+            }
+            return {"feature_names": list(defaults.keys()), "defaults": defaults}
+        elif disease_type == "parkinsons":
+            defaults = {
+                "MDVP:Fo(Hz)": 119.992, "MDVP:Fhi(Hz)": 157.302, "MDVP:Flo(Hz)": 74.997,
+                "MDVP:Jitter(%)": 0.00784, "MDVP:Jitter(Abs)": 0.00007, "MDVP:RAP": 0.0037,
+                "MDVP:PPQ": 0.00554, "Jitter:DDP": 0.01109, "MDVP:Shimmer": 0.04374,
+                "MDVP:Shimmer(dB)": 0.426, "Shimmer:APQ3": 0.02182, "Shimmer:APQ5": 0.0313,
+                "MDVP:APQ": 0.02971, "Shimmer:DDA": 0.06545, "NHR": 0.02211, "HNR": 21.033,
+                "RPDE": 0.414783, "DFA": 0.815285, "spread1": -4.813031, "spread2": 0.266482,
+                "D2": 2.301442, "PPE": 0.284654
+            }
+            return {"feature_names": list(defaults.keys()), "defaults": defaults}
+        raise HTTPException(status_code=404, detail="Disease not found")
+
+    @app.post("/explain/shap")
+    async def get_shap_explanation(request: BaseModel):
+        # We already enhanced GET /explain, so this is just a stub if needed
+        # Or we can just use /explain endpoint directly
+        pass
 
     @app.get("/benchmark/report")
     async def benchmark_report():
