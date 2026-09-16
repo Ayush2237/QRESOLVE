@@ -37,9 +37,9 @@ export const ExplainableOutput = () => {
 
   const isQuantum = triageResult.quantum_used;
   
-  // Calculate max importance for scaling bars
+  // Calculate max SHAP value for scaling bars
   const allEvidences = [...explainData.supporting_evidence, ...explainData.against_evidence];
-  const maxImportance = Math.max(0.1, ...allEvidences.map(e => e.importance));
+  const maxShap = Math.max(0.1, ...allEvidences.map(e => Math.abs(e.shap_value)));
 
   return (
     <div className="space-y-6 animate-fade-in max-w-3xl">
@@ -58,15 +58,23 @@ export const ExplainableOutput = () => {
             <div>
               <h4 className="text-xs font-semibold text-green-700 uppercase tracking-wider mb-2">Supporting Evidence (SHAP Values)</h4>
               <div className="divide-y divide-border border border-border bg-gray-50/50">
-                {explainData.supporting_evidence.map((ev, i) => (
-                  <div key={i} className="py-3 px-4 flex justify-between items-center text-sm">
-                    <span className="font-medium text-ink">{ev.label}</span>
-                    <div className="flex items-center gap-3">
-                      <span className="text-green-700 font-mono text-xs font-bold">+{ev.shap_value.toFixed(4)}</span>
-                      <span className="text-ink-muted bg-white border border-border px-2 py-0.5 text-xs font-mono">{ev.direction}</span>
+                {explainData.supporting_evidence.map((ev, i) => {
+                  const width = `${Math.min(100, (Math.abs(ev.shap_value) / maxShap) * 100)}%`;
+                  return (
+                    <div key={i} className="py-3 px-4 flex flex-col gap-2">
+                      <div className="flex justify-between items-center text-sm">
+                        <span className="font-medium text-ink">{ev.label}</span>
+                        <div className="flex items-center gap-3">
+                          <span className="text-green-600 font-mono font-semibold">+{ev.shap_value.toFixed(4)}</span>
+                          <span className="text-ink-muted bg-white border border-border px-2 py-0.5 text-xs font-mono">{ev.direction}</span>
+                        </div>
+                      </div>
+                      <div className="w-full bg-gray-200 h-1.5 rounded-full overflow-hidden">
+                        <div className="bg-green-500 h-full rounded-full" style={{ width }}></div>
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
                 {explainData.supporting_evidence.length === 0 && <div className="py-3 px-4 text-sm text-ink-muted">No explicit supporting evidence found.</div>}
               </div>
             </div>
@@ -74,15 +82,23 @@ export const ExplainableOutput = () => {
             <div>
               <h4 className="text-xs font-semibold text-red-700 uppercase tracking-wider mb-2">Counter Evidence (SHAP Values)</h4>
               <div className="divide-y divide-border border border-border bg-gray-50/50">
-                {explainData.against_evidence.map((ev, i) => (
-                  <div key={i} className="py-3 px-4 flex justify-between items-center text-sm">
-                    <span className="font-medium text-ink">{ev.label}</span>
-                    <div className="flex items-center gap-3">
-                      <span className="text-red-700 font-mono text-xs font-bold">{ev.shap_value.toFixed(4)}</span>
-                      <span className="text-ink-muted bg-white border border-border px-2 py-0.5 text-xs font-mono">{ev.direction}</span>
+                {explainData.against_evidence.map((ev, i) => {
+                  const width = `${Math.min(100, (Math.abs(ev.shap_value) / maxShap) * 100)}%`;
+                  return (
+                    <div key={i} className="py-3 px-4 flex flex-col gap-2">
+                      <div className="flex justify-between items-center text-sm">
+                        <span className="font-medium text-ink">{ev.label}</span>
+                        <div className="flex items-center gap-3">
+                          <span className="text-red-600 font-mono font-semibold">-{ev.shap_value.toFixed(4)}</span>
+                          <span className="text-ink-muted bg-white border border-border px-2 py-0.5 text-xs font-mono">{ev.direction}</span>
+                        </div>
+                      </div>
+                      <div className="w-full bg-gray-200 h-1.5 rounded-full overflow-hidden">
+                        <div className="bg-red-500 h-full rounded-full" style={{ width }}></div>
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
                 {explainData.against_evidence.length === 0 && <div className="py-3 px-4 text-sm text-ink-muted">No counter evidence found.</div>}
               </div>
             </div>

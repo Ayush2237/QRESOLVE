@@ -66,7 +66,9 @@ export type ParkinsonsRequest = {
 export type CommonDiseaseResponse = {
   diagnosis: string;
   probability: number;
-  confidence: number;
+  confidence: string;
+  supporting_evidence?: any[];
+  against_evidence?: any[];
 };
 
 export type DiseaseInfo = {

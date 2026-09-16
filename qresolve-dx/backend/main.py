@@ -19,8 +19,6 @@ import os
 import uuid
 import time
 import pickle
-import traceback
-from pathlib import Path
 from typing import Dict, List, Optional
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeout
 
@@ -219,7 +217,9 @@ if HAS_FASTAPI:
     class CommonDiseaseResponse(BaseModel):
         diagnosis: str
         probability: float
-        confidence: float
+        confidence: str
+        supporting_evidence: Optional[List[dict]] = None
+        against_evidence: Optional[List[dict]] = None
 
 
 # ---------------------------------------------------------------------------
@@ -305,35 +305,90 @@ def run_quantum_resolver(
 ) -> Optional[np.ndarray]:
     """
     Run quantum kernel resolver on hard case.
-    
-    In the full pipeline (run_pipeline.py), this builds the ZZFeatureMap and calculates 
-    the full kernel matrix against the training set (which takes ~80 seconds).
-    For the live API demo, we simulate the quantum resolution time and return 
-    the quantum-amplified probabilities so the dashboard visually succeeds without a browser timeout.
-    """
-    try:
-        import time
-        # Simulate the quantum circuit build and execution time for the demo
-        time.sleep(1.5)
-        
-        # Create a new probability array initialized to 0
-        quantum_probs = np.zeros(5)
-        
-        # In this demo, we assume the quantum model strongly resolves in favor of the first label
-        # (This mimics the behavior of our trained QSVM finding the distinct hyperplane)
-        quantum_probs[top2_labels[0]] = 0.94
-        quantum_probs[top2_labels[1]] = 0.05
-        
-        # Distribute remaining 1% to others
-        remaining = 0.01 / 3
-        for i in range(5):
-            if i not in top2_labels:
-                quantum_probs[i] = remaining
-                
-        return quantum_probs
 
+    Uses ZZFeatureMap + QSVM to resolve confusing pairs. If the real quantum
+    pipeline takes longer than `timeout` seconds (or fails), falls back to a
+    demo simulation so the dashboard responds without a browser timeout.
+    """
+    def _real_quantum():
+        """Attempt real QSVM inference."""
+        if state.X_all is None or state.y_all is None:
+            raise ValueError("Training data for QSVM not loaded.")
+
+        from models.quantum.feature_select import select_discriminative_features
+        from models.quantum.zz_kernel import create_quantum_kernel
+        from models.quantum.train_qsvm import train_quantum_svm
+
+        # 1. Feature selection
+        X_red, y_red, sel_idx = select_discriminative_features(
+            state.X_all, state.y_all, top2_labels, k=8
+        )
+
+        # Subsample for interactive speed (max 40 points)
+        if len(X_red) > 40:
+            np.random.seed(42)
+            idx = np.random.choice(len(X_red), 40, replace=False)
+            X_red = X_red[idx]
+            y_red = y_red[idx]
+
+        # 2. Normalize training data
+        X_min = np.min(X_red, axis=0)
+        X_max = np.max(X_red, axis=0)
+        denom = np.where(X_max - X_min == 0, 1e-10, X_max - X_min)
+        X_train_scaled = ((X_red - X_min) / denom) * np.pi
+
+        # 3. Build quantum kernel and train QSVM
+        kernel = create_quantum_kernel(n_features=8)
+        K_train = kernel.evaluate(x_vec=X_train_scaled)
+        qsvm = train_quantum_svm(K_train, y_red)
+
+        # 4. Process patient vector
+        X_pat_red = X[sel_idx].reshape(1, -1)
+        X_pat_scaled = ((X_pat_red - X_min) / denom) * np.pi
+
+        # 5. Predict
+        K_test = kernel.evaluate(x_vec=X_pat_scaled, y_vec=X_train_scaled)
+        pred_label = int(qsvm.predict(K_test)[0])
+
+        # 6. Build probability array
+        probs = np.zeros(NUM_CLASSES)
+        top1_idx, top2_idx = top2_labels
+        if pred_label == top1_idx:
+            probs[top1_idx] = 0.85
+            probs[top2_idx] = 0.10
+        else:
+            probs[top1_idx] = 0.10
+            probs[top2_idx] = 0.85
+
+        others = [i for i in range(NUM_CLASSES) if i not in top2_labels]
+        rem = 0.05
+        for i in others:
+            probs[i] = rem / len(others) if others else 0.0
+
+        return probs
+
+    # Try real quantum with timeout
+    try:
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            future = executor.submit(_real_quantum)
+            return future.result(timeout=timeout)
+    except FuturesTimeout:
+        print(f"Quantum resolver timed out after {timeout}s, using demo fallback")
     except Exception as e:
-        print(f"Quantum error: {e}")
+        print(f"Quantum resolver failed: {e}, using demo fallback")
+
+    # Demo fallback: simulate resolved probabilities
+    try:
+        quantum_probs = np.zeros(NUM_CLASSES)
+        quantum_probs[top2_labels[0]] = 0.85
+        quantum_probs[top2_labels[1]] = 0.10
+        others = [i for i in range(NUM_CLASSES) if i not in top2_labels]
+        rem = 0.05
+        for i in others:
+            quantum_probs[i] = rem / len(others) if others else 0.0
+        return quantum_probs
+    except Exception as e:
+        print(f"Quantum fallback error: {e}")
         return None
 
 
@@ -375,40 +430,7 @@ if HAS_FASTAPI:
         # Parse symptoms
         hpo_terms = parse_symptoms(request.symptoms)
         
-        # --- Hackathon Demo Fallback for Common Diseases ---
-        # The backend API natively serves the rare disease HPO cluster (the quantum track).
-        # If the frontend sends English text for the Breast Cancer or Parkinson's demo cases,
-        # we intercept it here and return a hardcoded Classical ML success response to avoid a 400 error.
-        raw_text = " ".join(request.symptoms).lower()
-        if "breast" in raw_text or "microcalcification" in raw_text:
-            return DiagnoseResponse(
-                case_id=str(uuid.uuid4())[:8],
-                ranked_diagnoses=[
-                    DiagnosisResult(disease="Breast Cancer (Malignant)", probability=0.92, rank=1),
-                    DiagnosisResult(disease="Benign Tumor", probability=0.08, rank=2)
-                ],
-                confidence=0.92,
-                is_hard_case=False,
-                quantum_used=False,
-                quantum_status="not_triggered",
-                top_diagnosis="Breast Cancer (Malignant)",
-                runner_up="Benign Tumor"
-            )
-        if "tremor" in raw_text or "bradykinesia" in raw_text:
-            return DiagnoseResponse(
-                case_id=str(uuid.uuid4())[:8],
-                ranked_diagnoses=[
-                    DiagnosisResult(disease="Parkinson's Disease", probability=0.88, rank=1),
-                    DiagnosisResult(disease="Essential Tremor", probability=0.12, rank=2)
-                ],
-                confidence=0.88,
-                is_hard_case=False,
-                quantum_used=False,
-                quantum_status="not_triggered",
-                top_diagnosis="Parkinson's Disease",
-                runner_up="Essential Tremor"
-            )
-        # ---------------------------------------------------
+
 
         if not hpo_terms:
             raise HTTPException(
@@ -433,7 +455,7 @@ if HAS_FASTAPI:
         quantum_used = False
         quantum_status = "not_needed"
 
-        if confusion_result.is_hard:
+        if confusion_result.is_hard and confusion_result.top1_disease in RARE_DISEASE_NAMES:
             # The margin is already calculated mathematically by the Confusion Detector.
             # We use the true calibrated probabilities produced by the ML model.
             top1_idx = DISEASE_LABEL_MAP[confusion_result.top1_disease]
@@ -492,17 +514,7 @@ if HAS_FASTAPI:
         Get detailed explanation for a diagnosis case.
         """
         if case_id not in state.case_store:
-            # Fallback for the hardcoded common disease demo cases
-            return ExplainResponse(
-                case_id=case_id,
-                top_diagnosis="Classical ML Diagnosis",
-                runner_up="Benign / Unrelated",
-                supporting_evidence=[
-                    EvidenceItem(hpo_id="dummy1", label="Detected positive markers in classical features", direction="present", shap_value=0.85)
-                ],
-                against_evidence=[],
-                suggested_tests=[]
-            )
+            raise HTTPException(status_code=404, detail="Case not found")
 
         case = state.case_store[case_id]
         top_disease = case["top_diagnosis"]
@@ -510,42 +522,73 @@ if HAS_FASTAPI:
         hpo_terms = case["hpo_terms"]
         probs = np.array(case["probs"])
 
-        # Supporting / against evidence from SHAP
+        # Supporting / against evidence
         model = state.calibrated_model or state.xgb_model
         supporting = []
         against = []
 
-        if pair_key in PAIRWISE_DISTINGUISHING:
-            for feat in PAIRWISE_DISTINGUISHING[pair_key]:
-                item = EvidenceItem(
-                    hpo_id=feat.hpo_id,
-                    label=feat.label,
-                    direction="present" if feat.hpo_id in hpo_terms else "absent",
-                    shap_value=1.0 if feat.hpo_id in hpo_terms else 0.5,
-                )
-                if feat.present_in == top_disease:
-                    if feat.hpo_id in hpo_terms:
-                        supporting.append(item)
+        # Try real SHAP explanation first
+        shap_succeeded = False
+        if model is not None:
+            try:
+                patient_X = np.array(case["X"]).reshape(1, -1)
+                shap_result = explain_prediction(model, patient_X, (top_disease, runner_up), ALL_HPO_TERMS)
+
+                for ev in shap_result.get('supporting_evidence', []):
+                    supporting.append(EvidenceItem(
+                        hpo_id=ev['hpo_id'],
+                        label=ev['label'],
+                        direction="present" if ev['hpo_id'] in hpo_terms else "absent",
+                        shap_value=abs(ev['shap_value'])
+                    ))
+
+                for ev in shap_result.get('against_evidence', []):
+                    against.append(EvidenceItem(
+                        hpo_id=ev['hpo_id'],
+                        label=ev['label'],
+                        direction="present" if ev['hpo_id'] in hpo_terms else "absent",
+                        shap_value=abs(ev['shap_value'])
+                    ))
+
+                if supporting or against:
+                    shap_succeeded = True
+            except Exception as e:
+                print(f"SHAP explanation failed, falling back to pairwise: {e}")
+
+        # Fallback to pairwise distinguishing features
+        if not shap_succeeded:
+            pair_key = frozenset([top_disease, runner_up])
+            if pair_key in PAIRWISE_DISTINGUISHING:
+                for feat in PAIRWISE_DISTINGUISHING[pair_key]:
+                    item = EvidenceItem(
+                        hpo_id=feat.hpo_id,
+                        label=feat.label,
+                        direction="present" if feat.hpo_id in hpo_terms else "absent",
+                        shap_value=1.0 if feat.hpo_id in hpo_terms else 0.5,
+                    )
+                    if feat.present_in == top_disease:
+                        if feat.hpo_id in hpo_terms:
+                            supporting.append(item)
+                        else:
+                            against.append(item)
                     else:
-                        against.append(item)
-                else:
-                    if feat.hpo_id in hpo_terms:
-                        against.append(item)
-                    else:
-                        supporting.append(item)
-        else:
-            # Fallback for undocumented pairs: highlight presence of top_disease symptoms
-            # and absence of runner_up symptoms mathematically.
-            for term in hpo_terms:
-                item = EvidenceItem(
-                    hpo_id=term,
-                    label=term,
-                    direction="present",
-                    shap_value=0.5
-                )
-                supporting.append(item)
+                        if feat.hpo_id in hpo_terms:
+                            against.append(item)
+                        else:
+                            supporting.append(item)
+            else:
+                # Last resort: highlight presence of patient symptoms
+                for term in hpo_terms:
+                    item = EvidenceItem(
+                        hpo_id=term,
+                        label=HPO_TERMS.get(term, term),
+                        direction="present",
+                        shap_value=0.5
+                    )
+                    supporting.append(item)
 
         # Next-test recommendations
+        suggested_tests: list = []
         try:
             recs = recommend_next_test(probs, DISEASE_NAMES, hpo_terms)
             for r in recs[:5]:
@@ -580,7 +623,9 @@ if HAS_FASTAPI:
             return CommonDiseaseResponse(
                 diagnosis=str(result.get("prediction", "Unknown")).capitalize(),
                 probability=float(result.get("probability", 0.0)),
-                confidence=float(result.get("probability", 0.0))
+                confidence=result.get("confidence", "Low"),
+                supporting_evidence=result.get("supporting_evidence"),
+                against_evidence=result.get("against_evidence")
             )
         except Exception as e:
             raise HTTPException(status_code=400, detail=str(e))
@@ -596,7 +641,9 @@ if HAS_FASTAPI:
             return CommonDiseaseResponse(
                 diagnosis=str(result.get("diagnosis", "Unknown")),
                 probability=float(result.get("probability", 0.0)),
-                confidence=float(result.get("confidence", 0.0))
+                confidence=result.get("confidence", "Low"),
+                supporting_evidence=result.get("supporting_evidence"),
+                against_evidence=result.get("against_evidence")
             )
         except Exception as e:
             raise HTTPException(status_code=400, detail=str(e))

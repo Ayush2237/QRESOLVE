@@ -149,10 +149,67 @@ export const CommonDiseaseInput = ({ diseaseType }: { diseaseType: 'breast-cance
                     </div>
                   </div>
                   
-                  <div className="p-4 bg-bg border border-border rounded-sm text-center">
-                    <div className="text-xs text-ink-muted uppercase tracking-wider mb-1 font-semibold">Model Confidence</div>
-                    <div className="text-xl font-mono text-ink">{(result.confidence * 100).toFixed(1)}%</div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="p-4 bg-bg border border-border rounded-sm text-center">
+                      <div className="text-xs text-ink-muted uppercase tracking-wider mb-1 font-semibold">Probability</div>
+                      <div className="text-xl font-mono text-ink">{(result.probability * 100).toFixed(1)}%</div>
+                    </div>
+                    <div className="p-4 bg-bg border border-border rounded-sm text-center">
+                      <div className="text-xs text-ink-muted uppercase tracking-wider mb-1 font-semibold">Confidence</div>
+                      <div className="text-xl font-mono text-ink">{result.confidence}</div>
+                    </div>
                   </div>
+
+                  {result.supporting_evidence && result.supporting_evidence.length > 0 && (
+                    <div className="mt-6 pt-6 border-t border-border">
+                      <h4 className="text-xs font-semibold text-green-700 uppercase tracking-wider mb-3">Supporting Features (SHAP)</h4>
+                      <div className="space-y-3">
+                        {result.supporting_evidence.map((ev, i) => {
+                          // use max of all values to normalize the bar
+                          const allVals = [...(result.supporting_evidence||[]), ...(result.against_evidence||[])].map(x => Math.abs(x.shap_value));
+                          const maxVal = Math.max(0.01, ...allVals);
+                          const width = `${Math.min(100, (Math.abs(ev.shap_value) / maxVal) * 100)}%`;
+                          return (
+                            <div key={i} className="flex flex-col gap-1">
+                              <div className="flex justify-between text-xs">
+                                <span className="font-medium text-ink truncate mr-2" title={ev.feature}>{ev.feature}</span>
+                                <span className="text-green-600 font-mono font-bold">+{ev.shap_value.toFixed(3)}</span>
+                              </div>
+                              <div className="w-full bg-gray-200 h-1.5 rounded-full overflow-hidden">
+                                <div className="bg-green-500 h-full rounded-full" style={{ width }}></div>
+                              </div>
+                              <div className="text-[10px] text-ink-muted">Value: {ev.value.toFixed(2)}</div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
+                  {result.against_evidence && result.against_evidence.length > 0 && (
+                    <div className="mt-4 pt-4 border-t border-border">
+                      <h4 className="text-xs font-semibold text-red-700 uppercase tracking-wider mb-3">Counter Features (SHAP)</h4>
+                      <div className="space-y-3">
+                        {result.against_evidence.map((ev, i) => {
+                          const allVals = [...(result.supporting_evidence||[]), ...(result.against_evidence||[])].map(x => Math.abs(x.shap_value));
+                          const maxVal = Math.max(0.01, ...allVals);
+                          const width = `${Math.min(100, (Math.abs(ev.shap_value) / maxVal) * 100)}%`;
+                          return (
+                            <div key={i} className="flex flex-col gap-1">
+                              <div className="flex justify-between text-xs">
+                                <span className="font-medium text-ink truncate mr-2" title={ev.feature}>{ev.feature}</span>
+                                <span className="text-red-600 font-mono font-bold">-{Math.abs(ev.shap_value).toFixed(3)}</span>
+                              </div>
+                              <div className="w-full bg-gray-200 h-1.5 rounded-full overflow-hidden">
+                                <div className="bg-red-500 h-full rounded-full" style={{ width }}></div>
+                              </div>
+                              <div className="text-[10px] text-ink-muted">Value: {ev.value.toFixed(2)}</div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
             </div>

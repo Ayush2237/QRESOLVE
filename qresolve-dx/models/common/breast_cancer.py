@@ -143,11 +143,57 @@ def predict_breast_cancer(model: Any, features: Dict[str, float]) -> Dict[str, A
     prediction = target_names[pred_idx]
     probability = float(prob[pred_idx])
     
+    # SHAP explanation
+    supporting_evidence = []
+    against_evidence = []
+    try:
+        if SHAP_AVAILABLE:
+            import shap
+            # Extract base estimator from CalibratedClassifierCV
+            base_model = model.calibrated_classifiers_[0].estimator if hasattr(model, 'calibrated_classifiers_') else model.estimator
+            explainer = shap.TreeExplainer(base_model)
+            shap_values = explainer.shap_values(feature_vector)[0]
+            
+            # Map SHAP values to features
+            for i, feat_name in enumerate(feature_names):
+                sv = shap_values[i]
+                val = feature_vector[0][i]
+                item = {
+                    'feature': feat_name,
+                    'value': float(val),
+                    'shap_value': float(sv)
+                }
+                # For XGBoost binary classification, positive SHAP pushes towards class 1 (Benign in this dataset)
+                # We need to align it with the predicted class.
+                # If pred_idx == 0 (Malignant), negative SHAP means supporting Malignant.
+                if pred_idx == 0:
+                    if sv < 0:
+                        supporting_evidence.append(item)
+                    elif sv > 0:
+                        against_evidence.append(item)
+                else: # pred_idx == 1 (Benign)
+                    if sv > 0:
+                        supporting_evidence.append(item)
+                    elif sv < 0:
+                        against_evidence.append(item)
+                        
+            # Sort by absolute SHAP value
+            supporting_evidence.sort(key=lambda x: abs(x['shap_value']), reverse=True)
+            against_evidence.sort(key=lambda x: abs(x['shap_value']), reverse=True)
+            
+            # Take top 5
+            supporting_evidence = supporting_evidence[:5]
+            against_evidence = against_evidence[:5]
+    except Exception as e:
+        print(f"SHAP error: {e}")
+
     result = {
         'prediction': prediction,
         'probability': probability,
         'confidence': 'High' if probability > 0.85 else 'Medium' if probability > 0.6 else 'Low',
-        'input_features': features
+        'input_features': features,
+        'supporting_evidence': supporting_evidence,
+        'against_evidence': against_evidence
     }
     return result
 

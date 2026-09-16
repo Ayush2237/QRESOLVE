@@ -4,7 +4,7 @@ import { Card } from '../common/Card';
 import { Button } from '../common/Button';
 import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import { api } from '../../lib/api';
-import type { GraphNode, GraphLink, GraphData } from '../../types';
+import type { GraphNode, GraphData } from '../../types';
 
 export const KnowledgeGraph = () => {
   const navigate = useNavigate();
