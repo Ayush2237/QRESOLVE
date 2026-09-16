@@ -70,7 +70,6 @@ HPO_TERMS: Dict[str, str] = {
     "HP:0001382": "Joint hypermobility",
     "HP:0001763": "Pes planus",
     "HP:0005294": "Protrusio acetabuli",
-    "HP:0003179": "Protrusio acetabuli",  # alias
     "HP:0002816": "Genu recurvatum",
     "HP:0001371": "Flexion contracture",
     "HP:0001182": "Camptodactyly",
@@ -525,6 +524,25 @@ PAIRWISE_DISTINGUISHING: Dict[FrozenSet[str], List[DistinguishingFeature]] = {
             "HP:0002616", "Aortic root aneurysm (progressive)",
             present_in="Marfan syndrome", absent_in="MASS phenotype",
             clinical_test="Serial echocardiography — if aortic z-score >2.0 or progressive, reclassify as Marfan"
+        ),
+    ],
+
+    # --- Loeys-Dietz vs MASS ---
+    frozenset(["Loeys-Dietz syndrome", "MASS phenotype"]): [
+        DistinguishingFeature(
+            "HP:0005116", "Arterial tortuosity",
+            present_in="Loeys-Dietz syndrome", absent_in="MASS phenotype",
+            clinical_test="CT/MR angiography of head, neck, and chest"
+        ),
+        DistinguishingFeature(
+            "HP:0000193", "Bifid uvula",
+            present_in="Loeys-Dietz syndrome", absent_in="MASS phenotype",
+            clinical_test="Oral cavity examination"
+        ),
+        DistinguishingFeature(
+            "HP:0002647", "Aortic dissection",
+            present_in="Loeys-Dietz syndrome", absent_in="MASS phenotype",
+            clinical_test="Aortic imaging with dissection risk stratification"
         ),
     ],
 
