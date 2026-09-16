@@ -191,14 +191,55 @@ def predict_parkinsons(model: Any, voice_features: Dict[str, float]) -> Dict[str
     except KeyError as e:
         raise ValueError(f"Missing required voice feature: {e}")
         
-    prob = model.predict_proba(X_input)[0, 1]
+    prob = float(model.predict_proba(X_input)[0, 1])
     prediction = int(model.predict(X_input)[0])
     
+    # SHAP explanation
+    supporting_evidence = []
+    against_evidence = []
+    try:
+        import shap
+        # Extract base estimator
+        base_model = model.calibrated_classifiers_[0].estimator if hasattr(model, 'calibrated_classifiers_') else model.estimator
+        explainer = shap.TreeExplainer(base_model)
+        shap_values = explainer.shap_values(X_input)[0]
+        
+        for i, feat_name in enumerate(PARKINSONS_FEATURE_NAMES):
+            sv = shap_values[i]
+            val = X_input[0][i]
+            item = {
+                'feature': feat_name,
+                'value': float(val),
+                'shap_value': float(sv)
+            }
+            # Target 1 = Parkinson's. Positive SHAP pushes to Parkinson's.
+            if prediction == 1:
+                if sv > 0:
+                    supporting_evidence.append(item)
+                elif sv < 0:
+                    against_evidence.append(item)
+            else: # prediction == 0 (Healthy)
+                if sv < 0:
+                    supporting_evidence.append(item)
+                elif sv > 0:
+                    against_evidence.append(item)
+                    
+        supporting_evidence.sort(key=lambda x: abs(x['shap_value']), reverse=True)
+        against_evidence.sort(key=lambda x: abs(x['shap_value']), reverse=True)
+        
+        supporting_evidence = supporting_evidence[:5]
+        against_evidence = against_evidence[:5]
+    except Exception as e:
+        print(f"SHAP error: {e}")
+
     return {
         'prediction': prediction,
-        'probability': float(prob),
+        'probability': prob,
         'diagnosis': "Parkinson's Disease" if prediction == 1 else 'Healthy',
-        'confidence': float(prob if prediction == 1 else 1 - prob)
+        'confidence': 'High' if prob > 0.85 else 'Medium' if prob > 0.6 else 'Low',
+        'input_features': voice_features,
+        'supporting_evidence': supporting_evidence,
+        'against_evidence': against_evidence
     }
 
 if __name__ == "__main__":
