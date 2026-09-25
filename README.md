@@ -98,3 +98,9 @@ npm run dev
 * `POST /nlp/extract`: Extract Human Phenotype Ontology (HPO) terms from unstructured clinical text.
 * `POST /graph`: Generate D3-compatible Knowledge Graph data linking patient symptoms to matching diseases.
 * `GET /diseases/{disease_type}/features`: Fetch the required clinical feature metadata and schema for common disease ML inputs.
+
+## 📚 Documentation
+All detailed documentation is located in the `docs/` folder:
+- **[Technical Architecture](docs/TECHNICAL_EXPLANATION.md):** Deep-dive into the mathematics, Information Theory, and QSVM implementation.
+- **[Pitch Deck Data](docs/PITCH_DECK_CONTENT.md):** Cloud compute economics, scale strategies, and the 13TB dataset handling architecture.
+- **[Prototype Roadmap](docs/PROTOTYPE_ROADMAP.md):** Roadmap for FHIR/HL7 integration, PDF clinical reports, and medical imaging CV.
