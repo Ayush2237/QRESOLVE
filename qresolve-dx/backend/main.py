@@ -27,7 +27,7 @@ import numpy as np
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 try:
-    from fastapi import FastAPI, HTTPException
+    from fastapi import FastAPI, HTTPException, Request, File, UploadFile, Response
     from fastapi.middleware.cors import CORSMiddleware
     from pydantic import BaseModel, Field
     HAS_FASTAPI = True
@@ -221,6 +221,32 @@ if HAS_FASTAPI:
         supporting_evidence: Optional[List[dict]] = None
         against_evidence: Optional[List[dict]] = None
 
+    class ScanFindingItem(BaseModel):
+        hpo_id: str
+        label: str
+        confidence: float
+        modality: str
+        anatomical_region: str
+        clinical_evidence: str
+
+    class ScanAnalysisResponse(BaseModel):
+        detected_hpo_ids: List[str]
+        findings: List[ScanFindingItem]
+        modality_detected: str
+        radiomic_metrics: Dict[str, float] = {}
+        breast_cancer_diagnosis: Optional[Dict[str, Any]] = None
+        extracted_features: Optional[Dict[str, float]] = None
+
+    class ScanAnalysisRequest(BaseModel):
+        image_base64: Optional[str] = None
+        filename: Optional[str] = None
+
+    try:
+        ScanFindingItem.model_rebuild()
+        ScanAnalysisResponse.model_rebuild()
+    except Exception:
+        pass
+
 
 # ---------------------------------------------------------------------------
 # Core Diagnosis Logic
@@ -406,7 +432,7 @@ if HAS_FASTAPI:
     app.add_middleware(
         CORSMiddleware,
         allow_origins=["*"],
-        allow_credentials=True,
+        allow_credentials=False,
         allow_methods=["*"],
         allow_headers=["*"],
     )
@@ -690,13 +716,15 @@ if HAS_FASTAPI:
         """Extract HPO terms from clinical text."""
         text = request.text.lower()
         extracted = []
+        seen = set()
         for hpo_id, label in HPO_TERMS.items():
-            if label.lower() in text:
+            if hpo_id not in seen and (label.lower() in text or hpo_id.lower() in text):
                 extracted.append({
                     "hpo_id": hpo_id,
                     "label": label,
                     "confirmed": True
                 })
+                seen.add(hpo_id)
         return extracted
 
     @app.post("/graph")
@@ -814,6 +842,387 @@ if HAS_FASTAPI:
             "status": "not_generated",
             "message": "Run run_pipeline.py to generate the benchmark report."
         }
+
+    @app.post("/scan/analyze", response_model=ScanAnalysisResponse)
+    async def analyze_medical_scan(
+        request: Request,
+        file: Optional[UploadFile] = File(None)
+    ):
+        """
+        Analyze medical imaging (X-Ray, Echocardiogram, MRI, CT) using Computer Vision.
+        Extracts radiomic features and maps findings to standardized HPO identifiers.
+        Supports multipart/form-data upload or JSON with base64 payload.
+        """
+        from models.vision.cv_module import analyze_scan_detailed
+        
+        image_bytes = b""
+        filename = None
+        
+        # 1. Check if multipart file uploaded
+        if file is not None:
+            image_bytes = await file.read()
+            filename = file.filename
+        else:
+            # 2. Check JSON payload or raw body
+            content_type = request.headers.get("content-type", "")
+            if "application/json" in content_type:
+                try:
+                    body = await request.json()
+                    import base64
+                    raw_b64 = body.get("image_base64", "")
+                    if "," in raw_b64:
+                        raw_b64 = raw_b64.split(",", 1)[1]
+                    if raw_b64:
+                        image_bytes = base64.b64decode(raw_b64)
+                    filename = body.get("filename")
+                except Exception as e:
+                    raise HTTPException(status_code=400, detail=f"Invalid base64 image: {str(e)}")
+            else:
+                image_bytes = await request.body()
+
+        if not image_bytes:
+            raise HTTPException(status_code=400, detail="No image data provided. Upload a file or provide image_base64.")
+
+        try:
+            result = analyze_scan_detailed(image_bytes, filename=filename)
+            return result
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Scan analysis failed: {str(e)}")
+
+    @app.post("/scan/mammogram")
+    async def analyze_mammogram_scan(
+        request: Request,
+        file: Optional[UploadFile] = File(None)
+    ):
+        """
+        Analyze digital mammography or breast biopsy imaging using Computer Vision.
+        Segments breast lesions, extracts 30 Wisconsin morphological features,
+        and executes calibrated XGBoost classification with real SHAP explainability.
+        """
+        from models.vision.cv_module import analyze_mammogram
+        
+        image_bytes = b""
+        filename = None
+        
+        if file is not None:
+            image_bytes = await file.read()
+            filename = file.filename
+        else:
+            content_type = request.headers.get("content-type", "")
+            if "application/json" in content_type:
+                try:
+                    body = await request.json()
+                    import base64
+                    raw_b64 = body.get("image_base64", "")
+                    if "," in raw_b64:
+                        raw_b64 = raw_b64.split(",", 1)[1]
+                    if raw_b64:
+                        image_bytes = base64.b64decode(raw_b64)
+                    filename = body.get("filename")
+                except Exception as e:
+                    raise HTTPException(status_code=400, detail=f"Invalid base64 image: {str(e)}")
+            else:
+                image_bytes = await request.body()
+
+        if not image_bytes:
+            raise HTTPException(status_code=400, detail="No mammogram image data provided.")
+
+        try:
+            result = analyze_mammogram(image_bytes, filename=filename)
+            return result
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Mammography analysis failed: {str(e)}")
+
+    # -----------------------------------------------------------------------
+    # Automated EHR PDF Extraction (NLP) Endpoints
+    # -----------------------------------------------------------------------
+
+    @app.post("/ehr/extract-pdf")
+    async def extract_ehr_pdf(
+        request: Request,
+        file: Optional[UploadFile] = File(None)
+    ):
+        """
+        Automated EHR PDF Extraction:
+        Upload patient historical medical record (PDF).
+        Extracts clinical sections and parses HPO phenotypes for classical/quantum triage.
+        """
+        try:
+            from backend.ehr_extractor import extract_text_from_pdf
+        except ImportError:
+            from ehr_extractor import extract_text_from_pdf
+
+        pdf_bytes = b""
+        if file is not None:
+            pdf_bytes = await file.read()
+        else:
+            content_type = request.headers.get("content-type", "")
+            if "application/json" in content_type:
+                try:
+                    body = await request.json()
+                    import base64
+                    raw_b64 = body.get("pdf_base64", "")
+                    if "," in raw_b64:
+                        raw_b64 = raw_b64.split(",", 1)[1]
+                    if raw_b64:
+                        pdf_bytes = base64.b64decode(raw_b64)
+                except Exception as e:
+                    raise HTTPException(status_code=400, detail=f"Invalid base64 payload: {str(e)}")
+            else:
+                pdf_bytes = await request.body()
+
+        if not pdf_bytes:
+            raise HTTPException(status_code=400, detail="No PDF data received.")
+
+        try:
+            doc_data = extract_text_from_pdf(pdf_bytes)
+            full_text = doc_data["full_text"]
+            text_lower = full_text.lower()
+
+            extracted_hpo = []
+            seen = set()
+            for hpo_id, label in HPO_TERMS.items():
+                if hpo_id not in seen and (label.lower() in text_lower or hpo_id.lower() in text_lower):
+                    extracted_hpo.append({
+                        "hpo_id": hpo_id,
+                        "label": label,
+                        "confirmed": True
+                    })
+                    seen.add(hpo_id)
+
+            route = "quantum" if len(extracted_hpo) >= 3 else "classical"
+
+            return {
+                "full_text": full_text,
+                "page_count": doc_data["page_count"],
+                "sections": doc_data["sections"],
+                "metadata": doc_data["metadata"],
+                "extracted_hpo_terms": extracted_hpo,
+                "recommended_route": route,
+            }
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"EHR PDF Extraction failed: {str(e)}")
+
+    @app.get("/ehr/sample-pdf")
+    async def get_sample_ehr_pdf(case: str = "marfan"):
+        """
+        Download authentic sample patient EHR PDF for demonstration.
+        """
+        try:
+            from backend.ehr_extractor import generate_sample_ehr_pdf
+        except ImportError:
+            from ehr_extractor import generate_sample_ehr_pdf
+
+        pdf_bytes = generate_sample_ehr_pdf(case)
+        return Response(
+            content=pdf_bytes,
+            media_type="application/pdf",
+            headers={"Content-Disposition": f"attachment; filename=AIIMS_EHR_Sample_{case.upper()}.pdf"}
+        )
+
+    # -----------------------------------------------------------------------
+    # Clinical PDF Report Generation Endpoints
+    # -----------------------------------------------------------------------
+
+    @app.get("/report/pdf/{case_id}")
+    async def download_case_pdf(case_id: str):
+        """
+        Generate publication-quality, branded clinical differential diagnosis report
+        containing Bayesian & Quantum probabilities, SHAP evidence, and Shannon next tests.
+        """
+        try:
+            from backend.pdf_report_generator import generate_clinical_diagnostic_report
+        except ImportError:
+            from pdf_report_generator import generate_clinical_diagnostic_report
+
+        if case_id not in state.case_store:
+            raise HTTPException(status_code=404, detail=f"Case ID {case_id} not found in session.")
+
+        case = state.case_store[case_id]
+        sorted_indices = np.argsort(case["probs"])[::-1]
+        diagnosis_data = {
+            "top_diagnosis": case["top_diagnosis"],
+            "runner_up": case["runner_up"],
+            "confidence": float(case["probs"][sorted_indices[0]]),
+            "is_hard_case": case.get("is_hard", False),
+            "quantum_used": case.get("quantum_used", False),
+            "ranked_diagnoses": [
+                {
+                    "rank": r + 1,
+                    "disease": DISEASE_NAMES[idx],
+                    "probability": float(case["probs"][idx]),
+                }
+                for r, idx in enumerate(sorted_indices)
+            ],
+        }
+
+        top_disease = case["top_diagnosis"]
+        runner_up = case["runner_up"]
+        hpo_terms = case["hpo_terms"]
+        supporting = []
+        against = []
+        model = state.calibrated_model or state.xgb_model
+        if model is not None:
+            try:
+                patient_X = np.array(case["X"]).reshape(1, -1)
+                shap_result = explain_prediction(model, patient_X, (top_disease, runner_up), ALL_HPO_TERMS)
+                for ev in shap_result.get('supporting_evidence', []):
+                    supporting.append({
+                        "hpo_id": ev['hpo_id'],
+                        "label": ev['label'],
+                        "direction": "present" if ev['hpo_id'] in hpo_terms else "absent",
+                        "shap_value": abs(ev['shap_value'])
+                    })
+                for ev in shap_result.get('against_evidence', []):
+                    against.append({
+                        "hpo_id": ev['hpo_id'],
+                        "label": ev['label'],
+                        "direction": "present" if ev['hpo_id'] in hpo_terms else "absent",
+                        "shap_value": abs(ev['shap_value'])
+                    })
+            except Exception:
+                pass
+
+        suggested_tests = []
+        try:
+            recs = recommend_next_test(np.array(case["probs"]), DISEASE_NAMES, hpo_terms)
+            for r in recs[:5]:
+                suggested_tests.append({
+                    "hpo_id": r["hpo_id"],
+                    "label": r["label"],
+                    "clinical_test": r.get("clinical_test", ""),
+                    "information_gain": r["information_gain"],
+                    "expected_outcome_positive": r.get("expected_outcome_positive", ""),
+                    "expected_outcome_negative": r.get("expected_outcome_negative", "")
+                })
+        except Exception:
+            pass
+
+        explanation_data = {
+            "supporting_evidence": supporting,
+            "against_evidence": against,
+            "suggested_tests": suggested_tests,
+        }
+
+        pdf_bytes = generate_clinical_diagnostic_report(case_id, diagnosis_data, explanation_data)
+        return Response(
+            content=pdf_bytes,
+            media_type="application/pdf",
+            headers={"Content-Disposition": f"attachment; filename=QResolve_Diagnostic_Report_{case_id}.pdf"}
+        )
+
+    @app.get("/report/demo-pdf")
+    async def download_demo_pdf():
+        """
+        Generate and download sample clinical diagnostic report demonstrating
+        quantum resolution and SHAP explainability.
+        """
+        try:
+            from backend.pdf_report_generator import generate_clinical_diagnostic_report
+        except ImportError:
+            from pdf_report_generator import generate_clinical_diagnostic_report
+
+        demo_diagnosis = {
+            "top_diagnosis": "Marfan syndrome",
+            "runner_up": "Loeys-Dietz syndrome",
+            "confidence": 0.884,
+            "is_hard_case": True,
+            "quantum_used": True,
+            "ranked_diagnoses": [
+                {"rank": 1, "disease": "Marfan syndrome", "probability": 0.884},
+                {"rank": 2, "disease": "Loeys-Dietz syndrome", "probability": 0.082},
+                {"rank": 3, "disease": "Beals syndrome", "probability": 0.018},
+                {"rank": 4, "disease": "MASS phenotype", "probability": 0.011},
+                {"rank": 5, "disease": "Shprintzen-Goldberg syndrome", "probability": 0.005},
+            ]
+        }
+
+        demo_explanation = {
+            "supporting_evidence": [
+                {"label": "Ectopia lentis", "hpo_id": "HP:0001083", "direction": "present", "shap_value": 0.412},
+                {"label": "Aortic root aneurysm", "hpo_id": "HP:0002616", "direction": "present", "shap_value": 0.329},
+                {"label": "Pectus excavatum", "hpo_id": "HP:0000768", "direction": "present", "shap_value": 0.188},
+            ],
+            "against_evidence": [
+                {"label": "Bifid uvula", "hpo_id": "HP:0000193", "direction": "absent", "shap_value": 0.285},
+                {"label": "Arterial tortuosity", "hpo_id": "HP:0005116", "direction": "absent", "shap_value": 0.240},
+            ],
+            "suggested_tests": [
+                {
+                    "label": "Ectopia lentis",
+                    "hpo_id": "HP:0001083",
+                    "clinical_test": "Ophthalmologic slit-lamp biomicroscopy",
+                    "information_gain": 0.942,
+                    "expected_outcome_positive": "Rules in Marfan (pathognomonic hallmark)",
+                    "expected_outcome_negative": "Raises suspicion of Loeys-Dietz"
+                },
+                {
+                    "label": "Bifid uvula / Cleft palate",
+                    "hpo_id": "HP:0000193",
+                    "clinical_test": "Direct oropharyngeal inspection / Palate palpation",
+                    "information_gain": 0.815,
+                    "expected_outcome_positive": "Strong evidence for Loeys-Dietz",
+                    "expected_outcome_negative": "Consistent with Marfan syndrome"
+                }
+            ]
+        }
+
+        patient_info = {
+            "abha_id": "91-8273-1928-01 (Verified ABDM Golden Card)",
+            "facility_name": "AIIMS New Delhi — Medical Genetics & Cardiology",
+            "age": 28,
+            "gender": "Male"
+        }
+
+        pdf_bytes = generate_clinical_diagnostic_report("DEMO-001", demo_diagnosis, demo_explanation, patient_info)
+        return Response(
+            content=pdf_bytes,
+            media_type="application/pdf",
+            headers={"Content-Disposition": "attachment; filename=QResolve_Clinical_Report_DEMO.pdf"}
+        )
+
+    # -----------------------------------------------------------------------
+    # Government API Setu & ABHA Gateway Endpoints
+    # -----------------------------------------------------------------------
+
+    @app.get("/abha/beneficiaries")
+    async def get_abha_beneficiaries():
+        """
+        API Setu & ABHA Sandbox:
+        List verified sandbox beneficiary profiles for Smart India Hackathon (SIH) demonstration.
+        """
+        try:
+            from backend.abha_gateway import ABDM_SANDBOX_REGISTRY
+        except ImportError:
+            from abha_gateway import ABDM_SANDBOX_REGISTRY
+
+        return [
+            {
+                "abha_id": v["abha_id"],
+                "name": v["name"],
+                "gender": v["gender"],
+                "age": v["age"],
+                "beneficiary_scheme": v["beneficiary_scheme"],
+                "facility_name": v["facility_name"],
+                "clinical_summary": v["clinical_summary"],
+                "n_conditions": len(v["fhir_conditions"]),
+            }
+            for v in ABDM_SANDBOX_REGISTRY.values()
+        ]
+
+    @app.get("/abha/patient/{abha_id}")
+    async def get_abha_patient(abha_id: str):
+        """
+        API Setu & ABHA Gateway:
+        Fetch patient health records via ABDM sandbox gateway in FHIR R4 format.
+        Automatically extracts phenotype observations to HPO terms.
+        """
+        try:
+            from backend.abha_gateway import fetch_abha_patient_record
+        except ImportError:
+            from abha_gateway import fetch_abha_patient_record
+
+        return fetch_abha_patient_record(abha_id)
 
     @app.get("/health")
     async def health():

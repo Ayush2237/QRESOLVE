@@ -159,7 +159,7 @@ def predict_breast_cancer(model: Any, features: Dict[str, float]) -> Dict[str, A
                 sv = shap_values[i]
                 val = feature_vector[0][i]
                 item = {
-                    'feature': feat_name,
+                    'feature': str(feat_name),
                     'value': float(val),
                     'shap_value': float(sv)
                 }

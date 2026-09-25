@@ -108,3 +108,69 @@ export type FeatureMetadata = {
   feature_names: string[];
   defaults: Record<string, number>;
 };
+
+export type ScanFindingItem = {
+  hpo_id: string;
+  label: string;
+  confidence: number;
+  modality: string;
+  anatomical_region: string;
+  clinical_evidence: string;
+};
+
+export type MammogramAnalysisResult = {
+  modality: string;
+  diagnosis: string;
+  probability: number;
+  confidence: string;
+  birads_score: string;
+  extracted_features: Record<string, number>;
+  lesion_metrics: Record<string, number>;
+  supporting_evidence: { feature: string; value: number; shap_value: number }[];
+  against_evidence: { feature: string; value: number; shap_value: number }[];
+  radiological_summary: string;
+};
+
+export type ScanAnalysisResponse = {
+  detected_hpo_ids: string[];
+  findings: ScanFindingItem[];
+  modality_detected: string;
+  radiomic_metrics: Record<string, number>;
+  breast_cancer_diagnosis?: MammogramAnalysisResult;
+  extracted_features?: Record<string, number>;
+};
+
+export type EhrExtractionResult = {
+  full_text: string;
+  page_count: number;
+  sections: Record<string, string>;
+  metadata: Record<string, string>;
+  extracted_hpo_terms: Array<{ hpo_id: string; label: string; confirmed: boolean }>;
+  recommended_route: 'classical' | 'quantum';
+};
+
+export type AbhaBeneficiarySummary = {
+  abha_id: string;
+  name: string;
+  gender: string;
+  age: number;
+  beneficiary_scheme: string;
+  facility_name: string;
+  clinical_summary: string;
+  n_conditions: number;
+};
+
+export type AbhaPatientProfile = {
+  abha_id: string;
+  abha_address: string;
+  name: string;
+  gender: string;
+  age: number;
+  beneficiary_scheme: string;
+  facility_name: string;
+  last_updated: string;
+  clinical_summary: string;
+  fhir_conditions: Array<{ code: string; display: string }>;
+  hpo_ids: string[];
+  fhir_bundle: any;
+};

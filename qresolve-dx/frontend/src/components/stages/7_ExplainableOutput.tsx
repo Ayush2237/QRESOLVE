@@ -106,11 +106,23 @@ export const ExplainableOutput = () => {
         </div>
       </Card>
 
-      <div className="flex justify-between items-center pt-4">
+      <div className="flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-3 pt-4">
         <Button variant="outline" onClick={() => navigate(-1)}>← Back</Button>
-        <Button onClick={() => navigate(`/case/${triageResult.case_id}/test`, { state: { explainData, triageResult } })}>
-          View Next Test Recommendation →
-        </Button>
+        <div className="flex items-center gap-2">
+          <a
+            href={api.getReportPdfUrl(triageResult.case_id)}
+            target="_blank"
+            rel="noopener noreferrer"
+            download={`QResolve_Report_${triageResult.case_id}.pdf`}
+            className="inline-flex items-center justify-center gap-1.5 px-4 py-2 border border-blue-600 bg-blue-50 text-blue-800 text-sm font-semibold rounded-none hover:bg-blue-100 transition-colors shadow-sm"
+          >
+            <span>📥</span>
+            <span>Download Clinical PDF Report</span>
+          </a>
+          <Button onClick={() => navigate(`/case/${triageResult.case_id}/test`, { state: { explainData, triageResult } })}>
+            View Next Test Recommendation →
+          </Button>
+        </div>
       </div>
     </div>
   );
