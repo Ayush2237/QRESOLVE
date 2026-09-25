@@ -39,3 +39,17 @@ To win Smart India Hackathon (SIH), the project must be viable for the Indian Go
 
 ### Prompt 4: Integrating Government API Setu (ABHA Mock)
 > "I want to add a 'Fetch ABHA Record' button to the frontend. Create a new file `backend/gov_integration.py`. Write a mock function that simulates calling the Indian Government's API Setu / NDHM gateway. It should accept an ABHA ID (e.g., 'ABHA-1234') and return a mock FHIR JSON payload containing patient history. Map that JSON payload into a string of symptoms and populate the frontend text area. Ensure the core routing logic in `main.py` is entirely untouched."
+
+## 3. High-Dimensional Data Scaling (Genomics & Beyond)
+
+If judges ask: *"How much further can you scale down high-dimensional data, or scale up the quantum capacity?"* 
+
+### A. The Current Compression Limit (15,000 → 8 Dimensions)
+For highly complex data like Whole Genome Sequencing (WGS) or Transcriptomics (15,000+ features), feeding the raw data into a near-term quantum computer is impossible due to noise and qubit limits. 
+* **The Solution:** We can use **Classical Autoencoders (Neural Networks)** to compress 15,000 genomic features into a heavily distilled bottleneck layer of **8 to 16 latent dimensions**. 
+* **Why this works:** These 8-16 dimensions no longer represent single genes, but rather *entire entangled genetic pathways*. We map these dense latent vectors directly into the 8-to-16 Qubit `ZZFeatureMap`. 
+* **The Limit:** Compressing below 4-8 dimensions risks "catastrophic information loss" (where the quantum model no longer has enough variance to draw a hyperplane). 8 to 16 dimensions is the mathematical sweet spot for NISQ-era quantum hardware.
+
+### B. Future Scaling (The IBM Condor Era)
+As IBM releases quantum computers with hundreds of error-corrected logical qubits (like the Heron or Condor architectures), the need for aggressive classical compression decreases.
+* **The Roadmap:** In 2-3 years, we can reduce the classical autoencoder compression, feeding **100+ dimensional vectors** directly into a 100-Qubit `ZZFeatureMap`. This will allow the Quantum SVM to natively evaluate the entanglement between hundreds of raw genes without any classical information loss, achieving true Quantum Supremacy in genomics.
